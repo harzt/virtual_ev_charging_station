@@ -38,12 +38,11 @@ La integración opera de forma completamente autónoma en el núcleo de Home Ass
 ### 2. Panel de Control Visual (¡Imprescindible!) 🎴
 Para controlar este sistema de forma interactiva y fluida sin lidiar con infinitas tarjetas de entidades nativas, instala su tarjeta compañera desde HACS Frontend:
 
-👉 **[Virtual EV Charging Card](https://github.com/tu_usuario/virtual-ev-charging-card)**
+👉 **[Virtual EV Charging Card](https://github.com/harzt/virtual-ev-charging-card)**
 
 Esta tarjeta te permitirá deslizar el porcentaje de batería y la potencia, conmutar los modos de carga y ver animaciones de flujo energético en tiempo real directamente desde tu Dashboard con una sola línea de código:
 
-```yaml
-type: custom:virtual-ev-charging-card
+*yaml type: custom:virtual-ev-charging-card
 
 
 📝 Ejemplo Práctico de Uso Diario
