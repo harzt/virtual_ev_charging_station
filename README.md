@@ -42,25 +42,41 @@ Para controlar este sistema de forma interactiva y fluida sin lidiar con infinit
 
 Esta tarjeta te permitirá deslizar el porcentaje de batería y la potencia, conmutar los modos de carga y ver animaciones de flujo energético en tiempo real directamente desde tu Dashboard con una sola línea de código:
 
-*yaml type: custom:virtual-ev-charging-card
+```yaml
+type: custom:virtual-ev-charging-card
+```
+## 📝 Ejemplos Prácticos de Uso Diario
 
+> 💡 **Parámetros de partida para los ejemplos:** Vehículo con batería de **13 kWh** cargando en un enchufe inteligente limitado a **1.4 kW** (eficiencia estimada del 88%).
 
-📝 Ejemplo Práctico de Uso Diario
-​Imagina que tienes una moto eléctrica con una batería de 13 kWh y cargas habitualmente en casa con un enchufe estándar a 1.4 kW.
-​Escenario A: Carga Inteligente con el Sol (Proteger batería al 80%)
-​Llegas al garaje tras usar la moto y ves que el marcador de la moto indica un 20% de batería. Enchufas el cargador.
-​Abres Home Assistant y, en tu Virtual EV Charging Card, arrastras el deslizador de batería al 20%.
-​El sistema calcula automáticamente las métricas iniciales:
-​Energía restante al 80%: 8.86 kWh (60% de capacidad necesaria + pérdidas).
-​Tiempo restante estimado: 6h 20m.
-​Activas el interruptor Modo Automático Solar (el umbral está fijado en 3000W).
-​A las 11:00 AM: Tus placas solares superan los 3000W. La estación se activa sola y recibes un aviso en Telegram.
-​A la 1:30 PM: Pasa una nube densa y la producción baja a 1500W. El enchufe se apaga. El sistema guarda en memoria que ya se han inyectado 3.5 kWh.
-​A las 2:00 PM: Vuelve el sol radiante (>3000W). El enchufe se enciende de nuevo. El sistema descuenta lo cargado y marca que ahora restan 5.36 kWh.
-​Al completarse: En cuanto el contador del enchufe inteligente registra que han pasado los 8.86 kWh totales calculados inicialmente, la estación apaga el enchufe por completo, desarma el modo solar para el día siguiente y te avisa: ¡Carga al 80% completada con éxito!
-​Escenario B: Carga Nocturna o Urgente (Llenar al 100%)
-​Necesitas hacer un viaje largo mañana, así que necesitas la moto al máximo.
-​Conectas la moto y simplemente activas el interruptor Forzar Carga desde Red.
-​El cargador se enciende al instante ignorando el sol. Al pasar por el equivalente del 80%, recibes un Telegram de progreso informándote de que la carga continúa hacia el 100%.
-​De madrugada, la batería se llena por completo. El BMS de la moto reduce el consumo drásticamente.
-​Tras detectar que el cargador consume menos de 15W durante 5 minutos, la integración apaga el enchufe para que el cargador no sufra estrés, desactiva el botón de Red y te envía el aviso final a tu móvil.
+---
+
+### ☀️ Escenario A: Carga con Excedentes Solares (Corte automático al 80%)
+
+Este modo está diseñado para el día a día, optimizando tu producción fotovoltaica y evitando el estrés que sufre la batería al pasar largas horas degradándose al 100%.
+
+* **10:00 AM | Preparación:** Llegas a casa con la moto al **20%** de batería y la dejas enchufada. Abres tu panel y deslizas el indicador a `20%`. 
+    * *El sistema calcula:* Energía requerida al 80% = **8.86 kWh** | Tiempo estimado = **6h 20m**.
+* **10:05 AM | Armado:** Activas el interruptor **Modo Automático Solar** (el umbral de arranque está fijado en tu tarjeta a `3000W`). El cargador sigue apagado.
+* **11:30 AM | Arranque Solar:** Tu producción fotovoltaica sube a **3200W**. La integración activa el enchufe automáticamente y te envía un Telegram:
+    > ⚡ **Carga de Moto Iniciada:** Cargador activado por excedentes solares. Tiempo neto estimado al 80%: 6h 20m.
+* **01:45 PM | Paso de Nube (Pausa):** El cielo se cubre y la producción cae a **1800W**. El enchufe se apaga solo. El sistema guarda en su memoria interna que ya han entrado **3.50 kWh** limpios.
+* **02:15 PM | Reanudación:** Vuelve a salir el sol (>3000W). El enchufe se enciende de nuevo. El sensor dinámico descuenta lo cargado y marca que ahora restan **5.36 kWh** y **3h 50m** de cuenta atrás.
+* **06:05 PM | Fin de Carga:** El contador de energía del enchufe confirma que se han completado los **8.86 kWh** totales desde el inicio. La integración apaga el enchufe de golpe, desarma el interruptor solar para el día siguiente y te avisa:
+    > 🔋 **Carga al 80% Completada:** El enchufe se ha apagado automáticamente tras consumir la energía estimada en modo Solar.
+
+---
+
+### 🔌 Escenario B: Carga de Emergencia o Nocturna (Llenar al 100%)
+
+Ideal para cuando necesitas exprimir la autonomía máxima del vehículo porque tienes previsto realizar un viaje largo al día siguiente.
+
+* **09:00 PM | Activación:** Conectas la moto al garaje y enciendes el interruptor **Forzar Carga desde Red**.
+* **09:01 PM | Arranque Inmediato:** El cargador se activa en el acto ignorando por completo que ya es de noche y no hay sol:
+    > ⚡ **Carga de Moto Iniciada:** Cargador forzado desde la Red. Objetivo final: 100% de batería.
+* **03:20 AM | Hito del 80%:** El sistema detecta que han pasado los kWh equivalentes al 80%, pero sabe que el interruptor de red está encendido, por lo que **no corta la corriente** y te envía un aviso de progreso:
+    > ⏳ **Moto al 80% (Modo Red):** Se ha alcanzado el 80% de carga estimada. El proceso continúa adelante hasta llenar el 100% de la batería.
+* **04:45 AM | Actuación del BMS:** La batería llega a su límite real del 100%. El sistema de gestión interna de la moto (BMS) reduce drásticamente la potencia para equilibrar las celdas.
+* **04:50 AM | Apagado por Seguridad:** Tras registrar que la potencia de carga lleva **5 minutos seguidos por debajo de 15W**, la integración asume que el proceso ha terminado. Apaga el enchufe para proteger el transformador, desactiva el botón de Red y te envía el reporte final:
+    > 🔋 **Carga al 100% Completada:** El enchufe se ha apagado tras detectar un consumo mínimo (Batería llena o moto desconectada).
+ 
