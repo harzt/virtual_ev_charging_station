@@ -7,5 +7,6 @@ CONF_SOLAR = "sensor_solar"
 CONF_CAPACIDAD = "capacidad_bateria"
 CONF_POTENCIA_CARGA = "potencia_carga"
 CONF_UMBRAL_SOLAR = "umbral_solar"
+CONF_NOTIFICACION = "servicio_notificacion" # <- NUEVA LÍNEA
 
 PLATFORMS = ["number", "switch", "sensor"]
