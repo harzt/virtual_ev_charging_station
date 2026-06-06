@@ -29,7 +29,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return
 
         # 1. Reset al cambiar el porcentaje manual
-        if entity_id == "number.virtual_ev_charging_station_porcentaje_actual":
+        if entity_id == f"number.{DOMAIN}_porcentaje_actual":
             if old_state and new_state.state != old_state.state:
                 hass.data[DOMAIN][entry.entry_id]["energia_corte"] = 0.0
                 hass.data[DOMAIN][entry.entry_id]["has_notified_80"] = False
@@ -41,7 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if new_state.state == "on" and (not old_state or old_state.state != "on"):
                 if hass.data[DOMAIN][entry.entry_id]["energia_corte"] == 0.0:
                     lectura_actual = float(hass.states.get(conf_energia).state or 0.0) if hass.states.get(conf_energia) else 0.0
-                    necesarios_state = hass.states.get("sensor.virtual_ev_charging_station_energia_restante_80")
+                    necesarios_state = hass.states.get(f"sensor.{DOMAIN}_energia_restante_80")
                     necesarios = float(necesarios_state.state or 0.0) if necesarios_state and necesarios_state.state not in ["unknown", "unavailable"] else 0.0
                     
                     new_corte = lectura_actual + necesarios
@@ -49,8 +49,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     if hass.data[DOMAIN][entry.entry_id]["sensor_corte"]:
                         hass.data[DOMAIN][entry.entry_id]["sensor_corte"].update_value(new_corte)
 
-                    forzar_red = hass.states.is_on("switch.virtual_ev_charging_station_forzar_carga_red")
-                    tiempo_state = hass.states.get("sensor.virtual_ev_charging_station_tiempo_restante")
+                    forzar_red = hass.states.is_on(f"switch.{DOMAIN}_forzar_carga_red")
+                    tiempo_state = hass.states.get(f"sensor.{DOMAIN}_tiempo_restante")
                     tiempo = tiempo_state.state if tiempo_state else "0m"
 
                     msg = "Cargador forzado desde la Red. Objetivo final: 100% de batería." if forzar_red else f"Cargador activado por excedentes solares. Tiempo neto estimado al 80%: {tiempo}."
@@ -62,16 +62,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     hass.data[DOMAIN][entry.entry_id]["bms_timer_cancel"] = None
 
         # 3 y 4. Gestión por Excedentes Solares
-        elif entity_id in [conf_solar, "number.virtual_ev_charging_station_umbral_potencia_solar"]:
+        elif entity_id in [conf_solar, f"number.{DOMAIN}_umbral_potencia_solar"]:
             solar_state = hass.states.get(conf_solar)
             solar_power = float(solar_state.state) if solar_state and solar_state.state not in ["unknown", "unavailable"] else 0.0
             
-            umbral_state = hass.states.get("number.virtual_ev_charging_station_umbral_potencia_solar")
+            umbral_state = hass.states.get(f"number.{DOMAIN}_umbral_potencia_solar")
             umbral = float(umbral_state.state) if umbral_state and umbral_state.state not in ["unknown", "unavailable"] else 3000.0
 
-            modo_solar = hass.states.is_on("switch.virtual_ev_charging_station_modo_automatico_solar")
+            modo_solar = hass.states.is_on(f"switch.{DOMAIN}_modo_automatico_solar")
             enchufe_on = hass.states.is_on(conf_enchufe)
-            forzar_red = hass.states.is_on("switch.virtual_ev_charging_station_forzar_carga_red")
+            forzar_red = hass.states.is_on(f"switch.{DOMAIN}_forzar_carga_red")
 
             if solar_power >= umbral and modo_solar and not enchufe_on:
                 await hass.services.async_call("switch", "turn_on", {"entity_id": conf_enchufe})
@@ -79,7 +79,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await hass.services.async_call("switch", "turn_off", {"entity_id": conf_enchufe})
 
         # 5 y 6. Gestión de Carga Forzada por Red
-        elif entity_id == "switch.virtual_ev_charging_station_forzar_carga_red":
+        elif entity_id == f"switch.{DOMAIN}_forzar_carga_red":
             if old_state and new_state.state != old_state.state:
                 enchufe_on = hass.states.is_on(conf_enchufe)
                 if new_state.state == "on" and not enchufe_on:
@@ -88,7 +88,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     solar_state = hass.states.get(conf_solar)
                     solar_power = float(solar_state.state or 0.0) if solar_state and solar_state.state not in ["unknown", "unavailable"] else 0.0
                     
-                    umbral_state = hass.states.get("number.virtual_ev_charging_station_umbral_potencia_solar")
+                    umbral_state = hass.states.get(f"number.{DOMAIN}_umbral_potencia_solar")
                     umbral = float(umbral_state.state) if umbral_state and umbral_state.state not in ["unknown", "unavailable"] else 3000.0
 
                     if solar_power < umbral:
@@ -102,10 +102,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 enchufe_on = hass.states.is_on(conf_enchufe)
 
                 if corte > 0.0 and current_energy >= corte and enchufe_on:
-                    forzar_red = hass.states.is_on("switch.virtual_ev_charging_station_forzar_carga_red")
+                    forzar_red = hass.states.is_on(f"switch.{DOMAIN}_forzar_carga_red")
                     if not forzar_red:
                         await hass.services.async_call("switch", "turn_off", {"entity_id": conf_enchufe})
-                        await hass.services.async_call("switch", "turn_off", {"entity_id": "switch.virtual_ev_charging_station_modo_automatico_solar"})
+                        await hass.services.async_call("switch", "turn_off", {"entity_id": f"switch.{DOMAIN}_modo_automatico_solar"})
                         hass.data[DOMAIN][entry.entry_id]["energia_corte"] = 0.0
                         if hass.data[DOMAIN][entry.entry_id]["sensor_corte"]:
                             hass.data[DOMAIN][entry.entry_id]["sensor_corte"].update_value(0.0)
@@ -126,8 +126,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         def _bms_cutoff_action(_):
                             hass.data[DOMAIN][entry.entry_id]["bms_timer_cancel"] = None
                             hass.async_create_task(hass.services.async_call("switch", "turn_off", {"entity_id": conf_enchufe}))
-                            hass.async_create_task(hass.services.async_call("switch", "turn_off", {"entity_id": "switch.virtual_ev_charging_station_forzar_carga_red"}))
-                            hass.async_create_task(hass.services.async_call("switch", "turn_off", {"entity_id": "switch.virtual_ev_charging_station_modo_automatico_solar"}))
+                            hass.async_create_task(hass.services.async_call("switch", "turn_off", {"entity_id": f"switch.{DOMAIN}_forzar_carga_red"}))
+                            hass.async_create_task(hass.services.async_call("switch", "turn_off", {"entity_id": f"switch.{DOMAIN}_modo_automatico_solar"}))
                             hass.data[DOMAIN][entry.entry_id]["energia_corte"] = 0.0
                             if hass.data[DOMAIN][entry.entry_id]["sensor_corte"]:
                                 hass.data[DOMAIN][entry.entry_id]["sensor_corte"].update_value(0.0)
@@ -139,13 +139,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         hass.data[DOMAIN][entry.entry_id]["bms_timer_cancel"]()
                         hass.data[DOMAIN][entry.entry_id]["bms_timer_cancel"] = None
 
-        # Disparamos de forma centralizada la actualización dinámica de los sensores en cada cambio de estado
+        # Actualiza dinámicamente los sensores en cada cambio
         hass.bus.async_fire(f"{DOMAIN}_update_sensors")
 
     tracked_entities = [
-        "number.virtual_ev_charging_station_porcentaje_actual",
-        "number.virtual_ev_charging_station_umbral_potencia_solar",
-        "switch.virtual_ev_charging_station_forzar_carga_red",
+        f"number.{DOMAIN}_porcentaje_actual",
+        f"number.{DOMAIN}_umbral_potencia_solar",
+        f"switch.{DOMAIN}_forzar_carga_red",
         conf_enchufe,
         conf_solar,
         conf_energia,
