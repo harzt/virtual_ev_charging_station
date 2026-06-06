@@ -1,7 +1,7 @@
 {
   "domain": "virtual_ev_charging_station",
   "name": "Virtual EV charging station",
-  "codeowners": ["@kiko"],
+  "codeowners": ["@harzt"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/harzt/virtual_ev_charging_station",
