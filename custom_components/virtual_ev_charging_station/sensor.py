@@ -2,6 +2,7 @@ from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.entity import DeviceInfo
 from .const import DOMAIN, CONF_CAPACIDAD, CONF_POTENCIA_CARGA, CONF_ENERGIA
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
@@ -12,16 +13,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     async_add_entities([kwh_sensor, time_sensor, corte_sensor])
     hass.data[DOMAIN][entry.entry_id]["sensor_corte"] = corte_sensor
 
-class EVKwhRemainingSensor(SensorEntity):
+class EVBaseSensor(SensorEntity):
     _attr_has_entity_name = True
+
+    def __init__(self, entry: ConfigEntry):
+        self.entry = entry
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name="Virtual EV Charging Station",
+            manufacturer="Kiko DIY",
+            model="Virtual EV Charger",
+        )
+
+class EVKwhRemainingSensor(EVBaseSensor):
     _attr_name = "Energía Restante (80%)"
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_native_unit_of_measurement = "kWh"
     _attr_icon = "mdi:lightning-bolt"
 
     def __init__(self, entry):
+        super().__init__(entry)
         self._attr_unique_id = f"{entry.entry_id}_kwh_remaining"
-        self.entry = entry
+        self.entity_id = f"sensor.{DOMAIN}_energia_restante_80"
         self._attr_native_value = 0.0
 
     async def async_added_to_hass(self):
@@ -34,15 +47,13 @@ class EVKwhRemainingSensor(SensorEntity):
         data = self.hass.data[DOMAIN].get(entry_id, {})
         corte = data.get("energia_corte", 0.0)
         
-        # Si está cargando, hacemos la resta dinámica en tiempo real
         if corte > 0.0:
             conf_energia = self.entry.data.get(CONF_ENERGIA)
             energy_state = self.hass.states.get(conf_energia)
             current_energy = float(energy_state.state) if energy_state and energy_state.state not in ["unknown", "unavailable"] else 0.0
             self._attr_native_value = max(0.0, round(corte - current_energy, 2))
         else:
-            # Si está en espera, calcula la estimación total inicial
-            pct_state = self.hass.states.get("number.virtual_ev_charging_station_porcentaje_actual")
+            pct_state = self.hass.states.get(f"number.{DOMAIN}_porcentaje_actual")
             if pct_state and pct_state.state not in ['unknown', 'unavailable']:
                 actual = float(pct_state.state)
                 capacidad = self.entry.data.get(CONF_CAPACIDAD, 13.0)
@@ -58,14 +69,14 @@ class EVKwhRemainingSensor(SensorEntity):
                 self._attr_native_value = 0.0
         self.async_write_ha_state()
 
-class EVTimeRemainingSensor(SensorEntity):
-    _attr_has_entity_name = True
+class EVTimeRemainingSensor(EVBaseSensor):
     _attr_name = "Tiempo Restante"
     _attr_icon = "mdi:clock-charging-outline"
 
     def __init__(self, entry, kwh_sensor):
+        super().__init__(entry)
         self._attr_unique_id = f"{entry.entry_id}_time_remaining"
-        self.entry = entry
+        self.entity_id = f"sensor.{DOMAIN}_tiempo_restante"
         self.kwh_sensor = kwh_sensor
         self._attr_native_value = "0m"
 
@@ -77,7 +88,7 @@ class EVTimeRemainingSensor(SensorEntity):
     def _update_calc(self, event=None):
         kwh = self.kwh_sensor.native_value
         
-        power_state = self.hass.states.get("number.virtual_ev_charging_station_potencia_de_carga")
+        power_state = self.hass.states.get(f"number.{DOMAIN}_potencia_de_carga")
         if power_state and power_state.state not in ['unknown', 'unavailable']:
             potencia = float(power_state.state)
         else:
@@ -100,10 +111,17 @@ class EVTargetEnergySensor(RestoreEntity, SensorEntity):
     _attr_icon = "mdi:calculator"
 
     def __init__(self, entry, hass):
-        self._attr_unique_id = f"{entry.entry_id}_kwh_cutoff"
         self.entry = entry
         self.hass_obj = hass
+        self._attr_unique_id = f"{entry.entry_id}_kwh_cutoff"
+        self.entity_id = f"sensor.{DOMAIN}_energia_de_corte"
         self._attr_native_value = 0.0
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name="Virtual EV Charging Station",
+            manufacturer="Kiko DIY",
+            model="Virtual EV Charger",
+        )
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
