@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Virtual EV Charging Station",
+        "description": "Configure the basic parameters and sensors to calculate net kWh and manage smart charging.",
+        "data": {
+          "enchufe_switch": "Charger switch",
+          "enchufe_energia": "Energy sensor",
+          "enchufe_potencia": "Power sensor",
+          "sensor_solar": "Total solar production",
+          "capacidad_bateria": "Battery capacity",
+          "potencia_carga": "Charging power",
+          "umbral_solar": "Solar power threshold",
+          "servicio_notificacion": "Notification service"
+        },
+        "data_description": {
+          "enchufe_switch": "The physical smart switch or relay that turns the vehicle charger on or off.",
+          "enchufe_energia": "Sensor measuring the total accumulated consumption of the plug in kWh. This is critical for hitting the exact 80% automatic stop.",
+          "enchufe_potencia": "Sensor measuring the instantaneous consumption in watts (W) of the charger. Used to detect the power drop when the BMS finishes charging.",
+          "sensor_solar": "Sensor (or template sensor) measuring the gross generation in watts (W) from your combined solar inverters.",
+          "capacidad_bateria": "The total factory capacity of your vehicle's battery in kWh (e.g., 13.0).",
+          "potencia_carga": "The default charging speed of your vehicle in kW (e.g., 1.4). Used to calculate the remaining time countdown.",
+          "umbral_solar": "The total photovoltaic generation required in watts (W) for the charger to automatically turn on in solar mode.",
+          "servicio_notificacion": "The name of the alert service you use (e.g., notify.telegram_kiko). Leave it completely blank if you prefer the system to run silently."
+        }
+      }
+    }
+  }
+}
