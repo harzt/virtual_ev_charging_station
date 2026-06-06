@@ -2,27 +2,27 @@
   "config": {
     "step": {
       "user": {
-        "title": "Virtual EV Charging Station",
-        "description": "Configura los parámetros básicos y sensores para calcular los kWh netos y gestionar la carga inteligente.",
+        "title": "Virtual EV Station - Configuración",
+        "description": "Selecciona las entidades de tu instalación para vincular el cargador de la moto.",
         "data": {
-          "enchufe_switch": "Interruptor del cargador",
-          "enchufe_energia": "Sensor de energía",
-          "enchufe_potencia": "Sensor de potencia",
-          "sensor_solar": "Producción solar total",
-          "capacidad_bateria": "Capacidad de la batería",
-          "potencia_carga": "Potencia de carga",
-          "umbral_solar": "Umbral de potencia solar",
-          "servicio_notificacion": "Servicio de notificación"
+          "enchufe_switch": "⚡ Interruptor del Cargador (Switch)",
+          "enchufe_energia": "🔋 Sensor de Energía Consumida (kWh)",
+          "enchufe_potencia": "📈 Sensor de Potencia Actual (W)",
+          "sensor_solar": "☀️ Producción Solar Total (W)",
+          "capacidad_bateria": "🛵 Capacidad Total de la Batería (kWh)",
+          "potencia_carga": "🔌 Velocidad de Carga (kW)",
+          "umbral_solar": "🌤️ Umbral de Arranque Solar (W)",
+          "servicio_notificacion": "📱 Servicio de Notificaciones (Opcional)"
         },
         "data_description": {
-          "enchufe_switch": "El interruptor o relay inteligente físico que corta o suministra energía al cargador del vehículo.",
-          "enchufe_energia": "Sensor que mide el consumo total acumulado del enchufe en kWh. Es crítico porque se usa para clavar la parada automática al 80%.",
-          "enchufe_potencia": "Sensor que mide el consumo instantáneo en vatios (W) del cargador. Se utiliza para detectar la caída de consumo cuando el BMS finaliza la carga.",
-          "sensor_solar": "Sensor (o sensor template) que mide la generación bruta en vatios (W) de tus inversores solares combinados.",
-          "capacidad_bateria": "La capacidad total real de fábrica de la batería de tu vehículo expresada en kWh (por ejemplo: 13.0).",
-          "potencia_carga": "La velocidad a la que carga tu vehículo por defecto en kW (por ejemplo: 1.4). Se utiliza para realizar la cuenta atrás del tiempo restante.",
-          "umbral_solar": "La generación fotovoltaica total requerida en vatios (W) para que el cargador se encienda automáticamente en modo solar.",
-          "servicio_notificacion": "El nombre del servicio de alertas que usas (ej: notify.telegram_kiko). Déjalo completamente en blanco si prefieres que el sistema funcione en silencio."
+          "enchufe_switch": "El enchufe inteligente que corta la corriente de la moto.",
+          "enchufe_energia": "El medidor acumulado. Es vital para saber cuándo parar al 80%.",
+          "enchufe_potencia": "Consumo en tiempo real. Se usa para detectar cuándo la moto está llena al 100%.",
+          "sensor_solar": "Suma de tus inversores (lo que generan las placas en este momento).",
+          "capacidad_bateria": "Ejemplo: 13.0",
+          "potencia_carga": "Ejemplo: 1.4",
+          "umbral_solar": "A partir de cuántos vatios de sol quieres que empiece a cargar.",
+          "servicio_notificacion": "Ejemplo: notify.telegram_juan"
         }
       }
     }
