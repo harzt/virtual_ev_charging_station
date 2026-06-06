@@ -1,7 +1,7 @@
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_state_change_event, async_call_later
-from .const import DOMAIN, PLATFORMS, CONF_ENCHUFE, CONF_ENERGIA, CONF_POTENCIA, CONF_SOLAR
+from .const import DOMAIN, PLATFORMS, CONF_ENCHUFE, CONF_ENERGIA, CONF_POTENCIA, CONF_SOLAR, CONF_NOTIFICACION
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Configura Virtual EV charging station e inicia la automatización nativa."""
@@ -19,6 +19,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     conf_energia = entry.data[CONF_ENERGIA]
     conf_potencia = entry.data[CONF_POTENCIA]
     conf_solar = entry.data[CONF_SOLAR]
+    
+    # Función de apoyo dinámica para notificaciones
+    async def enviar_notificacion(titulo, mensaje):
+        servicio = entry.data.get(CONF_NOTIFICACION, "").strip()
+        if servicio:
+            # Soporta tanto "notify.telegram_kiko" como "telegram_kiko" a secas
+            partes = servicio.split(".")
+            if len(partes) == 2:
+                await hass.services.async_call(partes[0], partes[1], {"title": titulo, "message": mensaje})
+            else:
+                await hass.services.async_call("notify", servicio, {"title": titulo, "message": mensaje})
 
     async def _handle_state_change(event):
         entity_id = event.data.get("entity_id")
@@ -54,7 +65,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     tiempo = tiempo_state.state if tiempo_state else "0m"
 
                     msg = "Cargador forzado desde la Red. Objetivo final: 100% de batería." if forzar_red else f"Cargador activado por excedentes solares. Tiempo neto estimado al 80%: {tiempo}."
-                    await hass.services.async_call("notify", "telegram_kiko", {"title": "⚡ *Carga de Moto Iniciada*", "message": msg})
+                    await enviar_notificacion("⚡ *Carga de Moto Iniciada*", msg)
             
             elif new_state.state == "off":
                 if hass.data[DOMAIN][entry.entry_id]["bms_timer_cancel"]:
@@ -109,13 +120,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         hass.data[DOMAIN][entry.entry_id]["energia_corte"] = 0.0
                         if hass.data[DOMAIN][entry.entry_id]["sensor_corte"]:
                             hass.data[DOMAIN][entry.entry_id]["sensor_corte"].update_value(0.0)
-                        await hass.services.async_call("notify", "telegram_kiko", {"title": "🔋 *Carga al 80% Completada*", "message": "El enchufe se ha apagado automáticamente tras consumir la energía estimada en modo Solar."})
+                        await enviar_notificacion("🔋 *Carga al 80% Completada*", "El enchufe se ha apagado automáticamente tras consumir la energía estimada en modo Solar.")
                     else:
                         if not hass.data[DOMAIN][entry.entry_id]["has_notified_80"]:
                             hass.data[DOMAIN][entry.entry_id]["has_notified_80"] = True
-                            await hass.services.async_call("notify", "telegram_kiko", {"title": "⏳ *Moto al 80% (Modo Red)*", "message": "Se ha alcanzado el 80% de carga estimada. El proceso continúa adelante hasta llenar el 100% de la batería."})
+                            await enviar_notificacion("⏳ *Moto al 80% (Modo Red)*", "Se ha alcanzado el 80% de carga estimada. El proceso continúa adelante hasta llenar el 100% de la batería.")
 
-        # 8. Monitoreo de potencia baja (Corte por BMS / Moto desconectada - 5 minutos)
+        # 8. Monitoreo de potencia baja (Corte por BMS / Moto desconectada)
         elif entity_id == conf_potencia:
             if new_state.state not in ["unknown", "unavailable"]:
                 power = float(new_state.state)
@@ -131,7 +142,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             hass.data[DOMAIN][entry.entry_id]["energia_corte"] = 0.0
                             if hass.data[DOMAIN][entry.entry_id]["sensor_corte"]:
                                 hass.data[DOMAIN][entry.entry_id]["sensor_corte"].update_value(0.0)
-                            hass.async_create_task(hass.services.async_call("notify", "telegram_kiko", {"title": "🔋 *Carga al 100% Completada*", "message": "El enchufe se ha apagado tras detectar un consumo mínimo (Batería llena o moto desconectada)."}))
+                            
+                            # Uso del nuevo sistema de notificaciones dinámico
+                            hass.async_create_task(enviar_notificacion("🔋 *Carga al 100% Completada*", "El enchufe se ha apagado tras detectar un consumo mínimo (Batería llena o moto desconectada)."))
                         
                         hass.data[DOMAIN][entry.entry_id]["bms_timer_cancel"] = async_call_later(hass, 300, _bms_cutoff_action)
                 else:
@@ -139,7 +152,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         hass.data[DOMAIN][entry.entry_id]["bms_timer_cancel"]()
                         hass.data[DOMAIN][entry.entry_id]["bms_timer_cancel"] = None
 
-        # Actualiza dinámicamente los sensores en cada cambio
         hass.bus.async_fire(f"{DOMAIN}_update_sensors")
 
     tracked_entities = [
