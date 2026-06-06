@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Virtual EV Charging Station",
+        "description": "Configura los parámetros básicos y sensores para calcular los kWh netos y gestionar la carga inteligente.",
+        "data": {
+          "enchufe_switch": "Interruptor del cargador",
+          "enchufe_energia": "Sensor de energía",
+          "enchufe_potencia": "Sensor de potencia",
+          "sensor_solar": "Producción solar total",
+          "capacidad_bateria": "Capacidad de la batería",
+          "potencia_carga": "Potencia de carga",
+          "umbral_solar": "Umbral de potencia solar",
+          "servicio_notificacion": "Servicio de notificación"
+        },
+        "data_description": {
+          "enchufe_switch": "El interruptor o relay inteligente físico que corta o suministra energía al cargador del vehículo.",
+          "enchufe_energia": "Sensor que mide el consumo total acumulado del enchufe en kWh. Es crítico porque se usa para clavar la parada automática al 80%.",
+          "enchufe_potencia": "Sensor que mide el consumo instantáneo en vatios (W) del cargador. Se utiliza para detectar la caída de consumo cuando el BMS finaliza la carga.",
+          "sensor_solar": "Sensor (o sensor template) que mide la generación bruta en vatios (W) de tus inversores solares combinados.",
+          "capacidad_bateria": "La capacidad total real de fábrica de la batería de tu vehículo expresada en kWh (por ejemplo: 13.0).",
+          "potencia_carga": "La velocidad a la que carga tu vehículo por defecto en kW (por ejemplo: 1.4). Se utiliza para realizar la cuenta atrás del tiempo restante.",
+          "umbral_solar": "La generación fotovoltaica total requerida en vatios (W) para que el cargador se encienda automáticamente en modo solar.",
+          "servicio_notificacion": "El nombre del servicio de alertas que usas (ej: notify.telegram_kiko). Déjalo completamente en blanco si prefieres que el sistema funcione en silencio."
+        }
+      }
+    }
+  }
+}
