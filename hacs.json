@@ -1,6 +1,6 @@
 {
   "name": "Virtual EV Charging Station",
-  "render_readme": true,
+  "render_readme": false,
   "homeassistant": "2024.1.0",
   "country": "ES"
 }
