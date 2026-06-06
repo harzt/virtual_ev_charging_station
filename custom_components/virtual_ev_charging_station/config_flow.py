@@ -26,6 +26,8 @@ class VirtualEVChargingStationConfigFlow(config_entries.ConfigFlow, domain=DOMAI
             vol.Required(CONF_CAPACIDAD, default=13.0): vol.Coerce(float),
             vol.Required(CONF_POTENCIA_CARGA, default=1.4): vol.Coerce(float),
             vol.Required(CONF_UMBRAL_SOLAR, default=3000.0): vol.Coerce(float),
+            # NUEVO CAMPO OPCIONAL PARA NOTIFICACIONES
+            vol.Optional(CONF_NOTIFICACION, default=""): str,
         })
 
         return self.async_show_form(step_id="user", data_schema=data_schema)
