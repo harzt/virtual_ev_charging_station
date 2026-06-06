@@ -20,11 +20,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     conf_potencia = entry.data[CONF_POTENCIA]
     conf_solar = entry.data[CONF_SOLAR]
     
-    # Función de apoyo dinámica para notificaciones
     async def enviar_notificacion(titulo, mensaje):
         servicio = entry.data.get(CONF_NOTIFICACION, "").strip()
         if servicio:
-            # Soporta tanto "notify.telegram_kiko" como "telegram_kiko" a secas
             partes = servicio.split(".")
             if len(partes) == 2:
                 await hass.services.async_call(partes[0], partes[1], {"title": titulo, "message": mensaje})
@@ -47,7 +45,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if hass.data[DOMAIN][entry.entry_id]["sensor_corte"]:
                     hass.data[DOMAIN][entry.entry_id]["sensor_corte"].update_value(0.0)
 
-        # 2. Inicio del enchufe físico (Fijar lecturas iniciales y corte)
+        # 2. Inicio/Fin del enchufe físico
         elif entity_id == conf_enchufe:
             if new_state.state == "on" and (not old_state or old_state.state != "on"):
                 if hass.data[DOMAIN][entry.entry_id]["energia_corte"] == 0.0:
@@ -72,7 +70,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     hass.data[DOMAIN][entry.entry_id]["bms_timer_cancel"]()
                     hass.data[DOMAIN][entry.entry_id]["bms_timer_cancel"] = None
 
-        # 3 y 4. Gestión por Excedentes Solares
+        # 3. Gestión por Producción Solar (Cuando el sol sube o baja)
         elif entity_id in [conf_solar, f"number.{DOMAIN}_umbral_potencia_solar"]:
             solar_state = hass.states.get(conf_solar)
             solar_power = float(solar_state.state) if solar_state and solar_state.state not in ["unknown", "unavailable"] else 0.0
@@ -89,7 +87,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             elif solar_power < umbral and enchufe_on and not forzar_red:
                 await hass.services.async_call("switch", "turn_off", {"entity_id": conf_enchufe})
 
-        # 5 y 6. Gestión de Carga Forzada por Red
+        # 4. GESTIÓN MANUAL DEL INTERRUPTOR SOLAR (¡El bloque que faltaba!)
+        elif entity_id == f"switch.{DOMAIN}_modo_automatico_solar":
+            if new_state.state == "on":
+                solar_state = hass.states.get(conf_solar)
+                solar_power = float(solar_state.state) if solar_state and solar_state.state not in ["unknown", "unavailable"] else 0.0
+                umbral_state = hass.states.get(f"number.{DOMAIN}_umbral_potencia_solar")
+                umbral = float(umbral_state.state) if umbral_state and umbral_state.state not in ["unknown", "unavailable"] else 3000.0
+                enchufe_on = hass.states.is_on(conf_enchufe)
+                
+                if solar_power >= umbral and not enchufe_on:
+                    await hass.services.async_call("switch", "turn_on", {"entity_id": conf_enchufe})
+            elif new_state.state == "off":
+                enchufe_on = hass.states.is_on(conf_enchufe)
+                forzar_red = hass.states.is_on(f"switch.{DOMAIN}_forzar_carga_red")
+                if enchufe_on and not forzar_red:
+                    await hass.services.async_call("switch", "turn_off", {"entity_id": conf_enchufe})
+
+        # 5. Gestión de Carga Forzada por Red
         elif entity_id == f"switch.{DOMAIN}_forzar_carga_red":
             if old_state and new_state.state != old_state.state:
                 enchufe_on = hass.states.is_on(conf_enchufe)
@@ -98,14 +113,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 elif new_state.state == "off" and enchufe_on:
                     solar_state = hass.states.get(conf_solar)
                     solar_power = float(solar_state.state or 0.0) if solar_state and solar_state.state not in ["unknown", "unavailable"] else 0.0
-                    
                     umbral_state = hass.states.get(f"number.{DOMAIN}_umbral_potencia_solar")
                     umbral = float(umbral_state.state) if umbral_state and umbral_state.state not in ["unknown", "unavailable"] else 3000.0
 
                     if solar_power < umbral:
                         await hass.services.async_call("switch", "turn_off", {"entity_id": conf_enchufe})
 
-        # 7. Monitoreo del consumo de energía y corte al 80%
+        # 6. Monitoreo del consumo de energía y corte al 80%
         elif entity_id == conf_energia:
             if new_state.state not in ["unknown", "unavailable"]:
                 current_energy = float(new_state.state)
@@ -126,7 +140,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             hass.data[DOMAIN][entry.entry_id]["has_notified_80"] = True
                             await enviar_notificacion("⏳ *Moto al 80% (Modo Red)*", "Se ha alcanzado el 80% de carga estimada. El proceso continúa adelante hasta llenar el 100% de la batería.")
 
-        # 8. Monitoreo de potencia baja (Corte por BMS / Moto desconectada)
+        # 7. Monitoreo de potencia baja (Corte por BMS / Moto desconectada)
         elif entity_id == conf_potencia:
             if new_state.state not in ["unknown", "unavailable"]:
                 power = float(new_state.state)
@@ -143,7 +157,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             if hass.data[DOMAIN][entry.entry_id]["sensor_corte"]:
                                 hass.data[DOMAIN][entry.entry_id]["sensor_corte"].update_value(0.0)
                             
-                            # Uso del nuevo sistema de notificaciones dinámico
                             hass.async_create_task(enviar_notificacion("🔋 *Carga al 100% Completada*", "El enchufe se ha apagado tras detectar un consumo mínimo (Batería llena o moto desconectada)."))
                         
                         hass.data[DOMAIN][entry.entry_id]["bms_timer_cancel"] = async_call_later(hass, 300, _bms_cutoff_action)
@@ -158,6 +171,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         f"number.{DOMAIN}_porcentaje_actual",
         f"number.{DOMAIN}_umbral_potencia_solar",
         f"switch.{DOMAIN}_forzar_carga_red",
+        f"switch.{DOMAIN}_modo_automatico_solar", # <--- YA VIGILAMOS EL BOTÓN
         conf_enchufe,
         conf_solar,
         conf_energia,
