@@ -10,24 +10,24 @@ async def async_setup_entry(hass, entry, async_add_entities):
         _LOGGER.info(f"[{DOMAIN}] Configurando números...")
         
         # Obtener valores configurados o defaults
-        potencia_carga = entry.data.get(CONF_POTENCIA_CARGA, 1.4)
-        umbral_solar = entry.data.get(CONF_UMBRAL_SOLAR, 3000.0)
+        potencia_carga = entry.data.get(CONF_POTENCIA_CARGA, 1.5)
+        umbral_solar = entry.data.get(CONF_UMBRAL_SOLAR, 3500)
         
         try:
             potencia_carga = float(str(potencia_carga).replace(',', '.'))
         except (ValueError, TypeError):
-            _LOGGER.warning(f"[{DOMAIN}] Potencia de carga inválida: {potencia_carga}, usando default 1.4")
-            potencia_carga = 1.4
+            _LOGGER.warning(f"[{DOMAIN}] Potencia de carga inválida: {potencia_carga}, usando default 1.5")
+            potencia_carga = 1.5
         
         try:
             umbral_solar = float(str(umbral_solar).replace(',', '.'))
         except (ValueError, TypeError):
-            _LOGGER.warning(f"[{DOMAIN}] Umbral solar inválido: {umbral_solar}, usando default 3000.0")
-            umbral_solar = 3000.0
+            _LOGGER.warning(f"[{DOMAIN}] Umbral solar inválido: {umbral_solar}, usando default 3500")
+            umbral_solar = 3500
         
         async_add_entities([
             EVNumber(entry, "porcentaje_actual", "Estado de la Batería", "%", 0, 100, 50.0, "mdi:battery-50"),
-            EVNumber(entry, "potencia_carga", "Potencia de Carga", "kW", 0.1, 22.0, potencia_carga, "mdi:ev-plug-type2"),
+            EVNumber(entry, "potencia_carga", "Potencia de Carga", "kW", 0.1, 11.0, potencia_carga, "mdi:ev-plug-type2"),
             EVNumber(entry, "umbral_potencia_solar", "Umbral Producción Solar", "W", 0, 10000, umbral_solar, "mdi:white-balance-sunny")
         ])
         _LOGGER.debug(f"[{DOMAIN}] Números configurados correctamente")
