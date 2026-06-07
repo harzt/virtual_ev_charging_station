@@ -1,5 +1,6 @@
+from datetime import timedelta
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.core import callback
 from .const import DOMAIN, CONF_CAPACIDAD
 
@@ -21,18 +22,14 @@ class EVSensor(SensorEntity):
         except: self._capacidad = 13.0
 
     async def async_added_to_hass(self):
-        id_pct = f"number.{DOMAIN}_porcentaje_actual"
-        id_pot = f"number.{DOMAIN}_potencia_carga"
-        
-        @callback
-        def _recalcular(event):
-            self._update_math()
-
-        self.async_on_remove(async_track_state_change_event(self.hass, [id_pct, id_pot], _recalcular))
-        self._update_math()
+        # Escucha al instante el evento de que has movido un slider
+        self.async_on_remove(self.hass.bus.async_listen("virtual_ev_recalc", self._update_math))
+        # Y además recálcula cada 3 segundos como red de seguridad
+        self.async_on_remove(async_track_time_interval(self.hass, self._update_math, timedelta(seconds=3)))
+        self._update_math(None)
 
     @callback
-    def _update_math(self):
+    def _update_math(self, event=None):
         pct_bateria = 50.0
         pot_carga = 1.4
 

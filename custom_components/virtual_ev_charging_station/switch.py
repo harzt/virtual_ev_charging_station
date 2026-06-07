@@ -22,7 +22,9 @@ class EVSwitch(SwitchEntity):
     async def async_turn_on(self, **kwargs):
         self._attr_is_on = True
         self.async_write_ha_state()
+        self.hass.bus.async_fire("virtual_ev_recalc")
 
     async def async_turn_off(self, **kwargs):
         self._attr_is_on = False
         self.async_write_ha_state()
+        self.hass.bus.async_fire("virtual_ev_recalc")
