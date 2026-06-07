@@ -10,6 +10,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class EVNumber(NumberEntity):
     def __init__(self, entry, id_name, display_name, uom, min_v, max_v, default, icon):
+        self._entry = entry
         self.entity_id = f"number.{DOMAIN}_{id_name}"
         self._attr_name = display_name
         self._attr_unique_id = f"{entry.entry_id}_{id_name}"
@@ -26,4 +27,3 @@ class EVNumber(NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         self._attr_native_value = float(value)
         self.async_write_ha_state()
-        self.hass.bus.async_fire(f"{DOMAIN}_recalcular")

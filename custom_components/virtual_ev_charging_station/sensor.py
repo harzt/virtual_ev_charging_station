@@ -1,4 +1,5 @@
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.core import callback
 from .const import DOMAIN, CONF_CAPACIDAD
 
@@ -10,6 +11,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class EVSensor(SensorEntity):
     def __init__(self, entry, id_name, display_name, uom, icon):
+        self._entry = entry
         self.entity_id = f"sensor.{DOMAIN}_{id_name}"
         self._attr_name = display_name
         self._attr_unique_id = f"{entry.entry_id}_{id_name}"
@@ -20,11 +22,18 @@ class EVSensor(SensorEntity):
         except: self._capacidad = 13.0
 
     async def async_added_to_hass(self):
-        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}_recalcular", self._update_math))
+        """Rastreador nativo: elimina cualquier desfase de la base de datos."""
+        id_pct = f"number.{DOMAIN}_porcentaje_actual"
+        id_pot = f"number.{DOMAIN}_potencia_carga"
+        
+        async def _recalcular_sensor(event):
+            self._update_math()
+
+        self.async_on_remove(async_track_state_change_event(self.hass, [id_pct, id_pot], _recalcular_sensor))
         self._update_math()
 
     @callback
-    def _update_math(self, event=None):
+    def _update_math(self):
         pct_bateria = 50.0
         pot_carga = 1.4
 
