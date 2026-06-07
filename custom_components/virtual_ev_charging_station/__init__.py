@@ -1,139 +1,141 @@
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.event import async_track_state_change_event, async_call_later
-from .const import DOMAIN, PLATFORMS, CONF_ENCHUFE, CONF_ENERGIA, CONF_POTENCIA, CONF_SOLAR, CONF_NOTIFICACION
+from homeassistant.helpers.event import async_track_state_change_event
+from .const import (
+    DOMAIN, PLATFORMS, CONF_ENCHUFE, CONF_ENERGIA, 
+    CONF_POTENCIA, CONF_SOLAR, CONF_NOTIFICACION
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     data = {
-        "meta_kwh": 0.0,
-        "bms_cancel": None,
+        "energia_corte": 0.0,
+        "enchufe_estaba_on": False,
         "notificado_80": False,
-        "enchufe_estaba_on": False
+        "bms_ticks": 0
     }
     hass.data[DOMAIN][entry.entry_id] = data
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Forzamos switch.moto por código como red de seguridad incondicional
-    enchufe = entry.data.get("enchufe_switch") or entry.data.get(CONF_ENCHUFE) or "switch.moto"
-    energia = entry.data.get("enchufe_energia") or entry.data.get(CONF_ENERGIA)
-    potencia = entry.data.get("enchufe_potencia") or entry.data.get(CONF_POTENCIA)
-    solar = entry.data.get("sensor_solar") or entry.data.get(CONF_SOLAR)
+    # 1. EXTRACCIÓN ESTRICTA DE LAS ENTIDADES CONFIGURADAS
+    conf_enchufe = entry.data.get(CONF_ENCHUFE)
+    conf_energia = entry.data.get(CONF_ENERGIA)
+    conf_potencia = entry.data.get(CONF_POTENCIA)
+    conf_solar = entry.data.get(CONF_SOLAR)
 
+    # Comprobación de seguridad
+    if not conf_enchufe:
+        _LOGGER.error(f"EV Station: Error crítico. No se detecta '{CONF_ENCHUFE}' en la configuración.")
+        return False
+
+    # Entidades generadas por la integración
     sw_solar = f"switch.{DOMAIN}_modo_automatico_solar"
     sw_red = f"switch.{DOMAIN}_forzar_carga_red"
     num_umbral = f"number.{DOMAIN}_umbral_potencia_solar"
     sens_restante = f"sensor.{DOMAIN}_energia_restante_80"
 
-    def get_val(eid):
+    def get_float(eid, default=0.0):
+        st = hass.states.get(eid)
+        if not st or st.state in ["unknown", "unavailable"]: return default
         try:
-            st = hass.states.get(eid)
-            if st and st.state not in ["unknown", "unavailable"]:
-                val = float(str(st.state).replace(',', '.'))
-                uom = st.attributes.get("unit_of_measurement", "").lower()
-                if "kw" in uom and "kwh" not in uom: val *= 1000.0
-                if uom == "wh": val /= 1000.0
-                return val
-        except: pass
-        return 0.0
+            s = str(st.state).replace(',', '.')
+            val = float(''.join(c for c in s if c.isdigit() or c in '.-'))
+            uom = st.attributes.get("unit_of_measurement", "").lower()
+            if "kw" in uom and "kwh" not in uom: val *= 1000.0
+            if uom == "wh": val /= 1000.0
+            return val
+        except: return default
 
     async def enviar_msg(titulo, mensaje):
-        srv = entry.data.get("servicio_notificacion") or entry.data.get(CONF_NOTIFICACION, "")
+        srv = entry.data.get(CONF_NOTIFICACION, "")
         if not srv: return
         try:
             parts = srv.strip().split(".")
             await hass.services.async_call(parts[0], parts[1], {"title": titulo, "message": mensaje})
         except: pass
 
-    async def trigger_automatizacion(event=None):
-        if not enchufe: return
-
-        is_on = hass.states.is_on(enchufe)
-        is_solar = hass.states.is_on(sw_solar)
+    async def evaluar_logica(event=None):
+        is_on = hass.states.is_on(conf_enchufe)
         is_red = hass.states.is_on(sw_red)
+        is_solar = hass.states.is_on(sw_solar)
 
-        val_solar = get_val(solar)
-        val_umbral = get_val(num_umbral)
-        val_energia = get_val(energia)
-        val_potencia = get_val(potencia)
+        val_solar = get_float(conf_solar)
+        val_umbral = get_float(num_umbral, 3000.0)
+        val_energia = get_float(conf_energia)
+        val_potencia = get_float(conf_potencia)
+        val_restante = get_float(sens_restante)
 
-        # Captura de inicio físico de carga
+        # INICIO DE CARGA
         if is_on and not data["enchufe_estaba_on"]:
-            data["meta_kwh"] = val_energia + get_val(sens_restante)
+            data["energia_corte"] = val_energia + val_restante
             data["notificado_80"] = False
+            data["bms_ticks"] = 0
             if is_red or is_solar:
                 msg = "Carga por Red (100%)." if is_red else "Carga Solar (80%)."
                 await enviar_msg("⚡ Moto Cargando", msg)
-        
+
+        # FIN DE CARGA
         elif not is_on and data["enchufe_estaba_on"]:
-            data["meta_kwh"] = 0.0
-            if data["bms_cancel"]:
-                data["bms_cancel"]()
-                data["bms_cancel"] = None
+            data["energia_corte"] = 0.0
+            data["bms_ticks"] = 0
 
         data["enchufe_estaba_on"] = is_on
 
-        # REGLA DE ENCENDIDO IMPLACABLE
+        # REGLAS DE ENCENDIDO IMPLACABLES (Apunta a tu enchufe configurado)
         if not is_on:
-            # Si se activa Forzar Carga Red, enciende ignorando todo lo demás
-            # Si se cumple el umbral solar, enciende automáticamente
             if is_red or (is_solar and val_solar >= val_umbral):
-                await hass.services.async_call("homeassistant", "turn_on", {"entity_id": enchufe})
+                await hass.services.async_call("switch", "turn_on", {"entity_id": conf_enchufe})
                 return
 
         # REGLAS DE APAGADO
         if is_on:
-            # Si estamos en modo Red, ignoramos el sol y el límite del 80%
             if is_red:
                 if 0 < val_potencia < 15:
-                    if not data["bms_cancel"]:
-                        async def _corte_red_bms(_):
-                            data["bms_cancel"] = None
-                            await hass.services.async_call("homeassistant", "turn_off", {"entity_id": enchufe})
-                            await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_red})
-                            await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_solar})
-                            await enviar_msg("🔋 100% Alcanzado", "Batería llena (Modo Red). Corriente cortada.")
-                        data["bms_cancel"] = async_call_later(hass, 10, _corte_red_bms)
+                    data["bms_ticks"] += 1
+                    if data["bms_ticks"] >= 3:
+                        await hass.services.async_call("switch", "turn_off", {"entity_id": conf_enchufe})
+                        await hass.services.async_call("switch", "turn_off", {"entity_id": sw_red})
+                        await hass.services.async_call("switch", "turn_off", {"entity_id": sw_solar})
+                        await enviar_msg("🔋 100% Alcanzado", "Batería llena. Corriente cortada.")
                 else:
-                    if data["bms_cancel"]: data["bms_cancel"](); data["bms_cancel"] = None
+                    data["bms_ticks"] = 0
                 return
 
-            # Si NO es modo Red, evaluamos las reglas del Modo Solar
             if is_solar:
-                # Apagado automático por caída de sol
                 if val_solar < val_umbral:
-                    await hass.services.async_call("homeassistant", "turn_off", {"entity_id": enchufe})
+                    await hass.services.async_call("switch", "turn_off", {"entity_id": conf_enchufe})
                     return
-
-                # Apagado automático al llegar al 80%
-                if data["meta_kwh"] > 0 and val_energia >= data["meta_kwh"]:
-                    await hass.services.async_call("homeassistant", "turn_off", {"entity_id": enchufe})
-                    await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_solar})
+                
+                if data["energia_corte"] > 0 and val_energia >= data["energia_corte"]:
+                    await hass.services.async_call("switch", "turn_off", {"entity_id": conf_enchufe})
+                    await hass.services.async_call("switch", "turn_off", {"entity_id": sw_solar})
                     await enviar_msg("🔋 80% Alcanzado", "Carga Solar Finalizada.")
                     return
 
-                # Parada por batería llena (100%)
                 if 0 < val_potencia < 15:
-                    if not data["bms_cancel"]:
-                        async def _corte_solar_bms(_):
-                            data["bms_cancel"] = None
-                            await hass.services.async_call("homeassistant", "turn_off", {"entity_id": enchufe})
-                            await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_solar})
-                            await enviar_msg("🔋 100% Alcanzado", "Batería llena (Modo Solar). Corriente cortada.")
-                        data["bms_cancel"] = async_call_later(hass, 10, _corte_solar_bms)
+                    data["bms_ticks"] += 1
+                    if data["bms_ticks"] >= 3:
+                        await hass.services.async_call("switch", "turn_off", {"entity_id": conf_enchufe})
+                        await hass.services.async_call("switch", "turn_off", {"entity_id": sw_solar})
+                        await enviar_msg("🔋 100% Alcanzado", "Batería llena. Corriente cortada.")
                 else:
-                    if data["bms_cancel"]: data["bms_cancel"](); data["bms_cancel"] = None
+                    data["bms_ticks"] = 0
 
-    # Agrupación nativa de todas las entidades involucradas
-    entidades_maestras = [enchufe, solar, energia, potencia, sw_solar, sw_red, num_umbral, sens_restante]
-    entidades_maestras = [e for e in entidades_maestras if e]
+    # Escucha estrictamente las entidades que metiste en la configuración y las de la tarjeta
+    entidades_vigiladas = [
+        conf_enchufe, conf_solar, conf_energia, conf_potencia,
+        sw_solar, sw_red, num_umbral, sens_restante
+    ]
+    entidades_vigiladas = [e for e in entidades_vigiladas if e]
 
-    # Escucha de cambios de estado nativa
-    entry.async_on_unload(async_track_state_change_event(hass, entidades_maestras, trigger_automatizacion))
+    entry.async_on_unload(
+        async_track_state_change_event(hass, entidades_vigiladas, evaluar_logica)
+    )
+
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

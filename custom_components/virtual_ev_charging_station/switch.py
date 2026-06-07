@@ -9,7 +9,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class EVSwitch(SwitchEntity):
     def __init__(self, entry, id_name, display_name, icon):
-        self._entry = entry
         self.entity_id = f"switch.{DOMAIN}_{id_name}"
         self._attr_name = display_name
         self._attr_unique_id = f"{entry.entry_id}_{id_name}"
