@@ -111,7 +111,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             is_solar = is_state_on(sw_solar)
 
             val_solar = get_float(conf_solar)
-            val_umbral = get_float(num_umbral, 3000.0)
+            val_umbral = get_float(num_umbral, 3500.0)
             val_energia = get_float(conf_energia)
             val_potencia = get_float(conf_potencia)
             val_restante = get_float(sens_restante)
