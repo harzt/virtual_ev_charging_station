@@ -38,7 +38,7 @@ class EVSensor(SensorEntity):
             _LOGGER.debug(f"[{DOMAIN}] Capacidad parseada: {self._capacidad} kWh")
         except (ValueError, TypeError) as e:
             _LOGGER.warning(f"[{DOMAIN}] Error parseando capacidad: {e}, usando default 13.0 kWh")
-            self._capacidad = 13.0
+            self._capacidad = 14
         
         self._attr_native_value = None
 
@@ -64,7 +64,7 @@ class EVSensor(SensorEntity):
         """Actualiza los cálculos del sensor."""
         try:
             pct_bateria = 50.0
-            pot_carga = 1.4
+            pot_carga = 1.5
 
             # Obtener porcentaje actual
             st_pct = self.hass.states.get(f"number.{DOMAIN}_porcentaje_actual")
@@ -97,8 +97,8 @@ class EVSensor(SensorEntity):
             
             elif self._id_name == "tiempo_restante":
                 if pot_carga <= 0:
-                    pot_carga = 1.4
-                    _LOGGER.warning(f"[{DOMAIN}] Potencia inválida, usando default 1.4 kW")
+                    pot_carga = 1.5
+                    _LOGGER.warning(f"[{DOMAIN}] Potencia inválida, usando default 1.5 kW")
                 
                 horas = energia_faltante / pot_carga
                 h = int(horas)
