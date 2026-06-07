@@ -10,8 +10,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class EVNumber(NumberEntity):
     def __init__(self, entry, id_name, display_name, uom, min_v, max_v, default, icon):
-        self._entry = entry
-        self.entity_id = f"number.{DOMAIN}_{id_name}" # FUERZA LA ID QUE BUSCA TU TARJETA
+        self.entity_id = f"number.{DOMAIN}_{id_name}"
         self._attr_name = display_name
         self._attr_unique_id = f"{entry.entry_id}_{id_name}"
         self._attr_native_unit_of_measurement = uom
@@ -20,7 +19,12 @@ class EVNumber(NumberEntity):
         self._attr_native_value = default
         self._attr_icon = icon
 
+    @property
+    def native_value(self):
+        """Propiedad estricta para que Home Assistant actualice la tarjeta."""
+        return self._attr_native_value
+
     async def async_set_native_value(self, value: float) -> None:
-        self._attr_native_value = value
+        """Guarda el valor de forma nativa al soltar el deslizador."""
+        self._attr_native_value = float(value)
         self.async_write_ha_state()
-        self.hass.bus.async_fire(f"{DOMAIN}_recalculate")
