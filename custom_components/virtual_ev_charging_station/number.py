@@ -21,10 +21,9 @@ class EVNumber(NumberEntity):
 
     @property
     def native_value(self):
-        """Propiedad estricta para que Home Assistant actualice la tarjeta."""
         return self._attr_native_value
 
     async def async_set_native_value(self, value: float) -> None:
-        """Guarda el valor de forma nativa al soltar el deslizador."""
         self._attr_native_value = float(value)
         self.async_write_ha_state()
+        self.hass.bus.async_fire(f"{DOMAIN}_recalcular")
