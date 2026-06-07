@@ -10,7 +10,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class EVSensor(SensorEntity):
     def __init__(self, entry, id_name, display_name, uom, icon):
-        self._entry = entry
         self.entity_id = f"sensor.{DOMAIN}_{id_name}"
         self._attr_name = display_name
         self._attr_unique_id = f"{entry.entry_id}_{id_name}"
@@ -21,7 +20,7 @@ class EVSensor(SensorEntity):
         except: self._capacidad = 13.0
 
     async def async_added_to_hass(self):
-        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}_recalculate", self._update_math))
+        self.async_on_remove(self.hass.bus.async_listen(f"{DOMAIN}_recalcular", self._update_math))
         self._update_math()
 
     @callback
@@ -29,7 +28,6 @@ class EVSensor(SensorEntity):
         pct_bateria = 50.0
         pot_carga = 1.4
 
-        # Lectura segura directa a las IDs fijas
         st_pct = self.hass.states.get(f"number.{DOMAIN}_porcentaje_actual")
         if st_pct and st_pct.state not in ["unknown", "unavailable"]:
             try: pct_bateria = float(st_pct.state)
