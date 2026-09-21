@@ -49,6 +49,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "energia_corte": 0.0,
         "enchufe_estaba_on": False,
         "notificado_80": False,
+        "notificado_ya_cargada": False,
         "bms_low_since": 0.0,
         "timestamp_encendido": 0.0,
         "energia_anterior": None,
@@ -151,6 +152,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             is_solar = is_state_on(sw_solar)
             is_programado = is_state_on(sw_programado)
 
+            if not is_solar and not is_programado:
+                # Sin ningún modo automático armado: permite que la próxima vez
+                # que se active alguno, si la batería ya está al objetivo,
+                # se pueda volver a avisar (en vez de quedarse silenciado para
+                # siempre por un aviso de una sesión anterior).
+                data["notificado_ya_cargada"] = False
+
             val_solar = get_float(conf_solar)
             val_umbral = get_float(num_umbral, 3000.0)
             val_duracion = get_float(num_duracion, 4.0)
@@ -249,12 +257,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     await hass.services.async_call("homeassistant", "turn_off", {"entity_id": conf_enchufe})
                     return
 
-                if is_solar and not is_red and data["energia_corte"] > 0 and val_energia >= data["energia_corte"]:
-                    if not data["notificado_80"]: 
+                # Corte por energía al 80%: aplica tanto a solar como a
+                # programado (ambos son cargas "de cortesía" que deben
+                # respetar el límite saludable; solo Forzar Red se salta el
+                # 80% a propósito, para llegar al 100%).
+                if (is_solar or is_programado) and not is_red and data["energia_corte"] > 0 and val_energia >= data["energia_corte"]:
+                    if not data["notificado_80"]:
                         data["notificado_80"] = True
                         await hass.services.async_call("homeassistant", "turn_off", {"entity_id": conf_enchufe})
-                        await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_solar})
-                        await enviar_msg("🔋 Objetivo solar completado", "La moto ha alcanzado el límite saludable del 80%. Enchufe desconectado automáticamente para cuidar la vida útil de tu batería. ¡Lista para rodar! 🏍️")
+                        if is_solar:
+                            await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_solar})
+                        if is_programado:
+                            await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_programado})
+                        if is_solar:
+                            await enviar_msg("🔋 Objetivo solar completado", "La moto ha alcanzado el límite saludable del 80%. Enchufe desconectado automáticamente para cuidar la vida útil de tu batería. ¡Lista para rodar! 🏍️")
+                        else:
+                            await enviar_msg("🔋 Carga programada completada al 80%", "Se ha alcanzado el límite saludable del 80% antes de agotar la duración programada. Enchufe desconectado automáticamente. 🏍️")
                         await guardar_estado()
                     return
 
@@ -306,6 +324,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if is_red:
                     await hass.services.async_call("homeassistant", "turn_on", {"entity_id": conf_enchufe})
                     return
+
+                # Si ya está por encima del objetivo del 80%, ni siquiera
+                # encendemos el enchufe con solar/programado (Forzar Red sigue
+                # pudiendo cargar hasta el 100%, por eso se comprueba antes).
+                if (is_solar or is_programado) and porcentaje_actual >= 80.0:
+                    if not data.get("notificado_ya_cargada"):
+                        data["notificado_ya_cargada"] = True
+                        await enviar_msg(
+                            "🔋 Batería ya al 80%",
+                            f"La batería está al {porcentaje_actual:g}%, por encima del objetivo del 80%. No se activa la carga para proteger la batería."
+                        )
+                        await guardar_estado()
+                    return
+
                 if is_solar and val_solar >= val_umbral:
                     await hass.services.async_call("homeassistant", "turn_on", {"entity_id": conf_enchufe})
                     return
