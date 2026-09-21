@@ -15,7 +15,7 @@ Está diseñada especialmente para vehículos sin conectividad nativa (API), per
 * **Modo Forzar Red al 100% (BMS):** Carga continua sin importar el sol. Al llegar al 100%, detecta la caída de consumo del Sistema de Gestión de Batería (BMS) de tu vehículo y corta el enchufe por seguridad.
 * **Carga Programada con duración ajustable:** Define la hora de inicio y cuántas horas quieres que cargue (control **Duración Carga Programada**, en horas). El corte al 80% (por kWh reales) también aplica a este modo, y la duración actúa como límite máximo de seguridad si no llega a alcanzarlo antes.
 * **Protección contra cargas innecesarias:** Si activas Carga Automática Solar o Carga Programada y la batería ya está por encima del 80%, la integración no enciende el enchufe y te avisa por notificación en vez de encender y apagar el relé sin necesidad.
-* **Notificación accionable al llegar al 80% en modo programado:** El aviso de corte al 80% en Carga Programada incluye un botón "⚡ Seguir hasta el 100%" (requiere la app móvil de Home Assistant) que activa **Forzar Carga desde Red** sin tener que abrir el panel. Con otros servicios de notificación (Telegram, etc.) se envía el mismo aviso sin el botón.
+* **Notificación accionable al llegar al 80% en modo programado:** El aviso de corte al 80% en Carga Programada incluye un botón "⚡ Seguir hasta el 100%" que activa **Forzar Carga desde Red** sin tener que abrir el panel. Funciona tanto con la app móvil de Home Assistant como con Telegram (teclado en línea); con otros servicios de notificación se envía el mismo aviso sin el botón.
 
 ---
 
@@ -70,16 +70,31 @@ Este modo está diseñado para el día a día, optimizando tu producción fotovo
 
 ---
 
-### 🔌 Escenario B: Carga de Emergencia o Nocturna (Llenar al 100%)
+### 🔌 Escenario B: Carga de Emergencia (Forzar Red al 100%)
 
-Ideal para cuando necesitas exprimir la autonomía máxima del vehículo porque tienes previsto realizar un viaje largo al día siguiente.
+Ideal para cuando necesitas exprimir la autonomía máxima del vehículo porque tienes previsto realizar un viaje largo al día siguiente. En este modo el 80% no se tiene en cuenta en ningún momento: el objetivo es siempre el 100%, sin pausas ni avisos intermedios.
 
 * **09:00 PM | Activación:** Conectas la moto al garaje y enciendes el interruptor **Forzar Carga desde Red**.
-* **09:01 PM | Arranque Inmediato:** El cargador se activa en el acto ignorando por completo que ya es de noche y no hay sol:
+* **09:01 PM | Arranque Inmediato:** El cargador se activa en el acto ignorando por completo que ya es de noche, que no hay sol y cuál sea el porcentaje actual de la batería:
     > ⚡ **Carga de Moto Iniciada:** Cargador forzado desde la Red. Objetivo final: 100% de batería.
-* **03:20 AM | Hito del 80%:** El sistema detecta que han pasado los kWh equivalentes al 80%, pero sabe que el interruptor de red está encendido, por lo que **no corta la corriente** y te envía un aviso de progreso:
-    > ⏳ **Moto al 80% (Modo Red):** Se ha alcanzado el 80% de carga estimada. El proceso continúa adelante hasta llenar el 100% de la batería.
 * **04:45 AM | Actuación del BMS:** La batería llega a su límite real del 100%. El sistema de gestión interna de la moto (BMS) reduce drásticamente la potencia para equilibrar las celdas.
 * **04:50 AM | Apagado por Seguridad:** Tras registrar que la potencia de carga lleva **5 minutos seguidos por debajo de 15W**, la integración asume que el proceso ha terminado. Apaga el enchufe para proteger el transformador, desactiva el botón de Red y te envía el reporte final:
     > 🔋 **Carga al 100% Completada:** El enchufe se ha apagado tras detectar un consumo mínimo (Batería llena o moto desconectada).
- 
+
+---
+
+### ⏰ Escenario C: Carga Programada Nocturna (corte al 80% con opción de seguir al 100%)
+
+Perfecto para cargar de noche (por ejemplo, a tarifa valle) sin tener que acordarte de nada ni vigilar el proceso.
+
+* **10:00 PM | Preparación:** Llegas a casa con la moto al **30%** y la dejas enchufada. Ajustas la **Hora de Inicio Programada** a `03:00`, dejas la **Duración Carga Programada** en `4h` (como límite de seguridad) y activas el interruptor **Carga Programada Horaria**. El cargador sigue apagado hasta que llegue la hora.
+* **03:00 AM | Arranque programado:** Se cumple la hora fijada y la integración enciende el enchufe automáticamente:
+    > ⏰ **Carga programada iniciada:** Se ha alcanzado la hora establecida. Iniciando la carga nocturna de la moto. ⚡
+* **06:40 AM | Corte al 80%:** El contador de energía confirma que se han completado los kWh reales necesarios para el 80%, bastante antes de agotar las 4 horas de margen. El enchufe se apaga y el interruptor de programación se desarma. Te llega un aviso con un botón de acción (Telegram o app móvil):
+    > 🔋 **Carga programada al 80%:** Se ha alcanzado el límite saludable del 80%. Enchufe desconectado. Pulsa el botón si quieres seguir cargando hasta el 100%.
+    > **[⚡ Seguir hasta el 100%]**
+* **06:41 AM | (Opcional) Seguir hasta el 100%:** Pulsas el botón desde Telegram o la app móvil sin necesidad de abrir el panel. La integración activa **Forzar Carga desde Red** al instante y la carga continúa hasta el 100%, con el mismo corte final por BMS del Escenario B.
+* **Si no pulsas nada:** La moto se queda cargada al 80%, protegida para el día a día.
+
+> 💡 La duración configurada (`4h` en este ejemplo) actúa como límite máximo de seguridad: si por lo que sea no se llegara exactamente al 80% (potencia de carga mal calibrada, etc.), a las **07:00** se apagaría igualmente.
+

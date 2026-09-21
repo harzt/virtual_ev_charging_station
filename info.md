@@ -8,8 +8,11 @@ Specially designed for motorcycles or cars without internet connectivity (API), 
 
 ### ✨ Key Features
 * **Automatic Solar Charging:** Harness your solar excess by automatically turning the charger on and off based on your photovoltaic production threshold.
+* **Scheduled Charging with adjustable duration:** Set a start time and how many hours to charge; the real 80% cutoff also applies here, with the duration acting as a safety ceiling.
 * **Countdown Sensors:** Watch in real-time as the remaining kWh and estimated minutes to finish charging decrease.
-* **BMS Protection:** 100% forced charging mode with automatic power drop detection (turns off the plug when the vehicle finishes balancing cells).
+* **BMS Protection:** 100% forced charging mode with automatic power drop detection (turns off the plug when the vehicle finishes balancing cells, or when there's simply no real consumption).
+* **Actionable notifications:** When scheduled charging stops at 80%, get a notification (Telegram or the HA mobile app) with a button to keep charging up to 100% without opening the dashboard.
+* **Smart guardrails:** Won't turn on solar/scheduled charging if the battery is already above 80%, and just sends you a notification instead.
 * **Interactive Panel:** Fully compatible with the custom `virtual-ev-charging-card` to control the entire energy flow without opening pop-up windows.
 
 > 📚 **For the full installation and configuration guide, please read the repository's README.**
@@ -24,8 +27,11 @@ Especialmente diseñado para motos o coches sin conectividad a internet, esta in
 
 ### ✨ Funciones destacadas
 * **Carga Automática Solar:** Aprovecha tu producción encendiendo y apagando el cargador según tu umbral fotovoltaico.
+* **Carga Programada con duración ajustable:** Define la hora de inicio y cuántas horas cargar; el corte real al 80% también aplica aquí, con la duración como límite máximo de seguridad.
 * **Sensores de Cuenta Atrás:** Observa en tiempo real cómo bajan los kWh restantes y los minutos estimados para finalizar la carga.
-* **Protección BMS:** Modo de carga forzada al 100% con detección automática de caída de potencia (apaga el enchufe cuando el vehículo termina de balancear celdas).
+* **Protección BMS:** Modo de carga forzada al 100% con detección automática de caída de potencia (apaga el enchufe cuando el vehículo termina de balancear celdas, o cuando simplemente no hay consumo real).
+* **Notificaciones accionables:** Cuando la carga programada corta al 80%, recibes un aviso (Telegram o app móvil de HA) con un botón para seguir cargando hasta el 100% sin abrir el panel.
+* **Protección contra cargas innecesarias:** No enciende la carga solar/programada si la batería ya está por encima del 80%; solo te avisa por notificación.
 * **Panel Interactivo:** Compatible con la tarjeta personalizada `virtual-ev-charging-card` para controlar todo el flujo de energía sin abrir ventanas emergentes.
 
 > 📚 **Para ver la guía completa de instalación y configuración, por favor lee el README del repositorio.**

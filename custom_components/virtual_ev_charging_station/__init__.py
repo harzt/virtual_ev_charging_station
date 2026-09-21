@@ -289,8 +289,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                                 "🔋 Carga programada al 80%",
                                 "Se ha alcanzado el límite saludable del 80% antes de agotar la duración programada. Enchufe desconectado. Pulsa el botón si quieres seguir cargando hasta el 100%.",
                                 extra_data={
+                                    # Formato de la app móvil de Home Assistant.
                                     "actions": [
                                         {"action": accion_seguir_100, "title": "⚡ Seguir hasta el 100%"}
+                                    ],
+                                    # Formato de notify.telegram (teclado en línea).
+                                    "inline_keyboard": [
+                                        f"⚡ Seguir hasta el 100%:/{accion_seguir_100}"
                                     ]
                                 }
                             )
@@ -394,10 +399,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def on_notification_action(event):
         if event.data.get("action") == accion_seguir_100:
-            _LOGGER.info(f"[{DOMAIN}] Acción 'Seguir hasta el 100%' pulsada desde la notificación")
+            _LOGGER.info(f"[{DOMAIN}] Acción 'Seguir hasta el 100%' pulsada desde la app móvil")
             await hass.services.async_call("homeassistant", "turn_on", {"entity_id": sw_red})
 
     entry.async_on_unload(hass.bus.async_listen("mobile_app_notification_action", on_notification_action))
+
+    async def on_telegram_callback(event):
+        if event.data.get("data") == f"/{accion_seguir_100}":
+            _LOGGER.info(f"[{DOMAIN}] Acción 'Seguir hasta el 100%' pulsada desde Telegram")
+            await hass.services.async_call("homeassistant", "turn_on", {"entity_id": sw_red})
+            callback_id = event.data.get("id")
+            if callback_id:
+                try:
+                    await hass.services.async_call("telegram_bot", "answer_callback_query", {
+                        "callback_query_id": callback_id,
+                        "message": "⚡ Continuando carga hasta el 100%"
+                    })
+                except Exception as e:
+                    _LOGGER.debug(f"[{DOMAIN}] No se pudo confirmar el callback de Telegram: {e}")
+
+    entry.async_on_unload(hass.bus.async_listen("telegram_callback", on_telegram_callback))
 
     async def timer_callback(now):
         await evaluar_logica()
