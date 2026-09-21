@@ -96,6 +96,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     sw_solar = get_real_id("switch", "modo_automatico_solar")
     sw_red = get_real_id("switch", "forzar_carga_red")
     sw_programado = get_real_id("switch", "modo_programado")
+    accion_seguir_100 = f"virtual_ev_seguir_100_{entry.entry_id}"
     time_inicio = get_real_id("time", "hora_inicio")
     num_umbral = get_real_id("number", "umbral_potencia_solar")
     num_porcentaje = get_real_id("number", "porcentaje_actual")
@@ -131,13 +132,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as e:
             _LOGGER.debug(f"[{DOMAIN}] No se pudo guardar el estado: {e}")
 
-    async def enviar_msg(titulo, mensaje):
+    async def enviar_msg(titulo, mensaje, extra_data=None):
         srv = entry.data.get(CONF_NOTIFICACION, "")
         if not srv: return
         try:
             parts = srv.strip().split(".")
             if len(parts) != 2: return
-            await hass.services.async_call(parts[0], parts[1], {"title": titulo, "message": mensaje})
+            payload = {"title": titulo, "message": mensaje}
+            if extra_data:
+                payload["data"] = extra_data
+            try:
+                await hass.services.async_call(parts[0], parts[1], payload)
+            except Exception as e:
+                if not extra_data:
+                    raise
+                # El servicio de notificación configurado (p.ej. Telegram) puede
+                # no admitir "actions" (botones, propios de la app móvil de HA).
+                # Reintentamos con el mensaje simple para no perder el aviso.
+                _LOGGER.debug(f"[{DOMAIN}] Notificación con acciones rechazada, reintentando sin ellas: {e}")
+                await hass.services.async_call(parts[0], parts[1], {"title": titulo, "message": mensaje})
         except Exception as e:
             _LOGGER.debug(f"[{DOMAIN}] No se pudo enviar la notificación: {e}")
 
@@ -272,7 +285,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         if is_solar:
                             await enviar_msg("🔋 Objetivo solar completado", "La moto ha alcanzado el límite saludable del 80%. Enchufe desconectado automáticamente para cuidar la vida útil de tu batería. ¡Lista para rodar! 🏍️")
                         else:
-                            await enviar_msg("🔋 Carga programada completada al 80%", "Se ha alcanzado el límite saludable del 80% antes de agotar la duración programada. Enchufe desconectado automáticamente. 🏍️")
+                            await enviar_msg(
+                                "🔋 Carga programada al 80%",
+                                "Se ha alcanzado el límite saludable del 80% antes de agotar la duración programada. Enchufe desconectado. Pulsa el botón si quieres seguir cargando hasta el 100%.",
+                                extra_data={
+                                    "actions": [
+                                        {"action": accion_seguir_100, "title": "⚡ Seguir hasta el 100%"}
+                                    ]
+                                }
+                            )
                         await guardar_estado()
                     return
 
@@ -365,11 +386,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def state_listener(event):
         await evaluar_logica()
-    
+
     entry.async_on_unload(hass.bus.async_listen("virtual_ev_recalc", state_listener))
-    
+
     entidades_a_vigilar = [sw_solar, sw_red, sw_programado, time_inicio, conf_enchufe, conf_solar, num_umbral, num_duracion]
     entry.async_on_unload(async_track_state_change_event(hass, entidades_a_vigilar, state_listener))
+
+    async def on_notification_action(event):
+        if event.data.get("action") == accion_seguir_100:
+            _LOGGER.info(f"[{DOMAIN}] Acción 'Seguir hasta el 100%' pulsada desde la notificación")
+            await hass.services.async_call("homeassistant", "turn_on", {"entity_id": sw_red})
+
+    entry.async_on_unload(hass.bus.async_listen("mobile_app_notification_action", on_notification_action))
 
     async def timer_callback(now):
         await evaluar_logica()
