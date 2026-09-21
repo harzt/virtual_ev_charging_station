@@ -73,28 +73,32 @@ class VirtualEVChargingStationConfigFlow(config_entries.ConfigFlow, domain=DOMAI
         def _req_num(key, fallback):
             return vol.Required(key, default=float(defaults.get(key, fallback)))
 
-        # FORMULARIO LIBERADO DE RESTRICCIONES DE DEVICE_CLASS
+        # Cada campo solo ofrece los sensores de la magnitud que le corresponde,
+        # filtrando por device_class para no mezclar sensores de energía y de potencia.
         return vol.Schema({
             _req_entidad(CONF_ENCHUFE): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="switch")
             ),
-            # Quitamos los device_class restrictivos para que Victron/Fronius salgan siempre
             _req_entidad(CONF_ENERGIA): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="sensor")
+                selector.EntitySelectorConfig(domain="sensor", device_class="energy")
             ),
             _req_entidad(CONF_POTENCIA): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="sensor")
+                selector.EntitySelectorConfig(domain="sensor", device_class="power")
             ),
             _req_entidad(CONF_SOLAR): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="sensor")
+                selector.EntitySelectorConfig(domain="sensor", device_class="power")
             ),
+            # Sin mínimo: se admite cualquier capacidad/potencia positiva para
+            # adaptarse a distintos vehículos y cargadores. El único límite real
+            # (> 0) lo aplica _validar_entrada más abajo, con su propio mensaje
+            # traducido en vez del error genérico de voluptuous.
             _req_num(CONF_CAPACIDAD, 14.4): vol.All(
                 vol.Coerce(float),
-                vol.Range(min=0.1, max=200)
+                vol.Range(max=1000)
             ),
             _req_num(CONF_POTENCIA_CARGA, 1.4): vol.All(
                 vol.Coerce(float),
-                vol.Range(min=0.1, max=22.0)
+                vol.Range(max=22.0)
             ),
             _req_num(CONF_UMBRAL_SOLAR, 3000.0): vol.All(
                 vol.Coerce(float),
