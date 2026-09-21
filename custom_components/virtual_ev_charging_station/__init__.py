@@ -41,7 +41,7 @@ def _write_storage(storage_path, all_data):
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    _LOGGER.info(f"[{DOMAIN}] Inicializando integración v1.3.3 - Reloj Nativo HA")
+    _LOGGER.info(f"[{DOMAIN}] Inicializando integración v1.4.0 - Reconfiguración y sensor de energía robustos")
 
     hass.data.setdefault(DOMAIN, {})
 
@@ -51,7 +51,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "notificado_80": False,
         "bms_low_since": 0.0,
         "timestamp_encendido": 0.0,
-        "energia_anterior": 0.0,
+        "energia_anterior": None,
+        "energia_entidad_ref": None,
         "porcentaje_preciso": 0.0
     }
 
@@ -61,7 +62,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     stored_data = await hass.async_add_executor_job(_read_storage, storage_path)
     if entry.entry_id in stored_data:
         data.update(stored_data[entry.entry_id])
-    
+
     hass.data[DOMAIN][entry.entry_id] = data
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -71,6 +72,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     conf_solar = entry.data.get(CONF_SOLAR)
 
     if not conf_enchufe: return False
+
+    # Si se ha reconfigurado la integración con otro sensor de energía,
+    # descartamos la referencia anterior: comparar el acumulado del sensor
+    # nuevo contra el del antiguo generaría un salto de energía sin sentido
+    # (por ejemplo, saltar al 100% de golpe al enchufar por primera vez).
+    if data.get("energia_entidad_ref") != conf_energia:
+        _LOGGER.info(
+            f"[{DOMAIN}] Sensor de energía nuevo o distinto al guardado "
+            f"({data.get('energia_entidad_ref')} -> {conf_energia}); "
+            "se reinicia la referencia de energía."
+        )
+        data["energia_anterior"] = None
+        data["energia_entidad_ref"] = conf_energia
 
     ent_reg = er.async_get(hass)
     
@@ -155,30 +169,52 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
 
             # TRACKING DE BATERÍA EN TIEMPO REAL
-            energia_anterior = data.get("energia_anterior", val_energia)
+            st_energia = hass.states.get(conf_energia)
+            energia_valida = st_energia is not None and st_energia.state not in ("unknown", "unavailable", "")
+
+            energia_anterior = data.get("energia_anterior")
             porcentaje_actual = get_float(num_porcentaje)
             porcentaje_interno = data.get("porcentaje_preciso", porcentaje_actual)
 
             if abs(porcentaje_actual - round(porcentaje_interno, 1)) > 0.5:
                 porcentaje_interno = porcentaje_actual
 
-            if is_on and val_energia > energia_anterior:
-                delta_kwh = val_energia - energia_anterior
-                cap_bateria = float(entry.data.get(CONF_CAPACIDAD, 14.4))
+            if energia_valida:
+                if energia_anterior is None:
+                    # Primera lectura válida (integración nueva o recién
+                    # reconfigurada con otro sensor): fijamos la referencia
+                    # sin aplicar ningún delta, para no interpretar el
+                    # acumulado histórico del sensor como energía cargada
+                    # de golpe.
+                    _LOGGER.debug(f"[{DOMAIN}] Referencia de energía inicializada a {val_energia} kWh")
+                elif is_on and val_energia > energia_anterior:
+                    delta_kwh = val_energia - energia_anterior
+                    cap_bateria = float(entry.data.get(CONF_CAPACIDAD, 14.4))
 
-                # Solo un 88% de lo consumido de la red llega realmente a la batería
-                # (pérdidas térmicas del cargador).
-                porcentaje_interno += (delta_kwh * EFICIENCIA_CARGA / cap_bateria) * 100.0
-                porcentaje_interno = min(100.0, porcentaje_interno)
-                
-                nuevo_porc = round(porcentaje_interno, 1)
-                if nuevo_porc > porcentaje_actual:
-                    await hass.services.async_call("number", "set_value", {
-                        "entity_id": num_porcentaje, 
-                        "value": nuevo_porc
-                    })
+                    if delta_kwh > cap_bateria:
+                        # Salto mayor que la capacidad total de la batería en
+                        # un solo ciclo: no es un consumo real, sino un
+                        # sensor sustituido o un contador reiniciado.
+                        # Ignoramos el delta y resincronizamos la referencia.
+                        _LOGGER.warning(
+                            f"[{DOMAIN}] Salto de energía implausible (+{delta_kwh:.2f} kWh en un ciclo); "
+                            "se ignora y se resincroniza la referencia (¿sensor cambiado o reiniciado?)"
+                        )
+                    else:
+                        # Solo un 88% de lo consumido de la red llega realmente a la
+                        # batería (pérdidas térmicas del cargador).
+                        porcentaje_interno += (delta_kwh * EFICIENCIA_CARGA / cap_bateria) * 100.0
+                        porcentaje_interno = min(100.0, porcentaje_interno)
 
-            data["energia_anterior"] = val_energia
+                        nuevo_porc = round(porcentaje_interno, 1)
+                        if nuevo_porc > porcentaje_actual:
+                            await hass.services.async_call("number", "set_value", {
+                                "entity_id": num_porcentaje,
+                                "value": nuevo_porc
+                            })
+
+                data["energia_anterior"] = val_energia
+
             data["porcentaje_preciso"] = porcentaje_interno
 
             enchufe_estaba_on = data.get("enchufe_estaba_on", False)

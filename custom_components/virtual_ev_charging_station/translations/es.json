@@ -24,16 +24,42 @@
           "umbral_solar": "A partir de cuántos vatios de sol quieres que empiece a cargar.",
           "servicio_notificacion": "Ejemplo: notify.telegram_juan"
         }
+      },
+      "reconfigure": {
+        "title": "Virtual EV Station - Reconfigurar",
+        "description": "Cambia las entidades (enchufe, sensores) o los parámetros de esta estación. El histórico de carga y las entidades internas se conservan.",
+        "data": {
+          "enchufe_switch": "⚡ Interruptor del Cargador (Switch)",
+          "enchufe_energia": "🔋 Sensor de Energía Consumida (kWh)",
+          "enchufe_potencia": "📈 Sensor de Potencia Actual (W)",
+          "sensor_solar": "☀️ Producción Solar Total (W)",
+          "capacidad_bateria": "🛵 Capacidad Total de la Batería (kWh)",
+          "potencia_carga": "🔌 Velocidad de Carga (kW)",
+          "umbral_solar": "🌤️ Umbral de Arranque Solar (W)",
+          "servicio_notificacion": "📱 Servicio de Notificaciones (Opcional)"
+        },
+        "data_description": {
+          "enchufe_switch": "El enchufe inteligente que corta la corriente de la moto.",
+          "enchufe_energia": "El medidor acumulado. Si lo cambias, la integración reinicia la referencia automáticamente.",
+          "enchufe_potencia": "Consumo en tiempo real. Se usa para detectar cuándo la moto está llena al 100%.",
+          "sensor_solar": "Suma de tus inversores (lo que generan las placas en este momento).",
+          "capacidad_bateria": "Ejemplo: 13.0",
+          "potencia_carga": "Ejemplo: 1.4",
+          "umbral_solar": "A partir de cuántos vatios de sol quieres que empiece a cargar.",
+          "servicio_notificacion": "Ejemplo: notify.telegram_juan"
+        }
       }
     },
     "error": {
       "missing_entities": "Debes seleccionar todas las entidades obligatorias (interruptor, energía, potencia y sensor solar).",
       "value_error": "El valor introducido debe ser mayor que cero.",
       "invalid_number": "Introduce un número válido (usa punto o coma como separador decimal).",
-      "unknown": "Ha ocurrido un error inesperado. Revisa el registro para más detalles."
+      "unknown": "Ha ocurrido un error inesperado. Revisa el registro para más detalles.",
+      "already_configured": "Ese interruptor ya está vinculado a otra estación de carga virtual."
     },
     "abort": {
-      "already_configured": "Ese interruptor ya está vinculado a una estación de carga virtual."
+      "already_configured": "Ese interruptor ya está vinculado a una estación de carga virtual.",
+      "reconfigure_successful": "La estación se ha reconfigurado correctamente con las nuevas entidades."
     }
   }
 }
