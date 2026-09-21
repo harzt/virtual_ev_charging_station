@@ -8,7 +8,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities([
         EVNumber(entry, "porcentaje_actual", "Estado de la Batería", "%", 0.0, 100.0, 50.0, "mdi:battery-50", 1.0),
         EVNumber(entry, "potencia_carga", "Potencia de Carga", "kW", 0.05, 22.0, float(entry.data.get(CONF_POTENCIA_CARGA, 1.5)), "mdi:ev-plug-type2", 0.05),
-        EVNumber(entry, "umbral_potencia_solar", "Umbral Producción Solar", "W", 0.0, 10000.0, float(entry.data.get(CONF_UMBRAL_SOLAR, 3000.0)), "mdi:white-balance-sunny", 100.0)
+        EVNumber(entry, "umbral_potencia_solar", "Umbral Producción Solar", "W", 0.0, 10000.0, float(entry.data.get(CONF_UMBRAL_SOLAR, 3000.0)), "mdi:white-balance-sunny", 100.0),
+        EVNumber(entry, "duracion_programada", "Duración Carga Programada", "h", 0.0, 24.0, 4.0, "mdi:timer-outline", 0.5)
     ])
 
 class EVNumber(RestoreNumber):
