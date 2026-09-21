@@ -98,7 +98,7 @@ class VirtualEVChargingStationConfigFlow(config_entries.ConfigFlow, domain=DOMAI
             ),
             _req_num(CONF_POTENCIA_CARGA, 1.4): vol.All(
                 vol.Coerce(float),
-                vol.Range(max=22.0)
+                vol.Range(max=11.0)
             ),
             _req_num(CONF_UMBRAL_SOLAR, 3000.0): vol.All(
                 vol.Coerce(float),
