@@ -54,7 +54,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "timestamp_encendido": 0.0,
         "energia_anterior": None,
         "energia_entidad_ref": None,
-        "porcentaje_preciso": 0.0
+        "porcentaje_preciso": 0.0,
+        "solar_sobre_umbral_desde": 0.0,
+        "solar_bajo_umbral_desde": 0.0
     }
 
     storage_path = hass.config.path(STORAGE_DIR, STORAGE_FILE)
@@ -101,6 +103,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     num_umbral = get_real_id("number", "umbral_potencia_solar")
     num_porcentaje = get_real_id("number", "porcentaje_actual")
     num_duracion = get_real_id("number", "duracion_programada")
+    num_margen_solar = get_real_id("number", "margen_estabilidad_solar")
     sens_restante = get_real_id("sensor", "energia_restante_80")
 
     def is_state_on(eid):
@@ -172,8 +175,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 # siempre por un aviso de una sesión anterior).
                 data["notificado_ya_cargada"] = False
 
+            if not is_solar:
+                # Sin el modo solar armado no tiene sentido arrastrar temporizadores
+                # de estabilidad de una sesión anterior (evitaría el margen la
+                # próxima vez que se active, disparando un encendido/apagado
+                # inmediato con un valor de "desde" ya antiguo).
+                data["solar_sobre_umbral_desde"] = 0.0
+                data["solar_bajo_umbral_desde"] = 0.0
+
             val_solar = get_float(conf_solar)
             val_umbral = get_float(num_umbral, 3000.0)
+            val_margen_solar = get_float(num_margen_solar, 2.0)
             val_duracion = get_float(num_duracion, 4.0)
             val_energia = get_float(conf_energia)
             val_potencia = get_float(conf_potencia)
@@ -250,6 +262,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 data["notificado_80"] = False
                 data["bms_low_since"] = 0.0
                 data["timestamp_encendido"] = ahora
+                # Al encender de verdad, cualquier temporizador de estabilidad
+                # solar arrastrado de un ciclo anterior queda obsoleto.
+                data["solar_sobre_umbral_desde"] = 0.0
+                data["solar_bajo_umbral_desde"] = 0.0
                 
                 if is_red:
                     await enviar_msg("🏍️ ¡Carga en marcha! (Red)", "Conectado a la red eléctrica. Cargando la batería al 100% sin depender del sol. ⚡")
@@ -303,8 +319,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     return
 
                 if is_solar and not is_red and val_solar < val_umbral:
-                    await hass.services.async_call("homeassistant", "turn_off", {"entity_id": conf_enchufe})
-                    return
+                    # Margen de estabilidad: exige que la producción lleve por
+                    # debajo del umbral de forma continua durante X minutos antes
+                    # de cortar, para no parar y arrancar la carga con cada nube
+                    # pasajera. 0 minutos = sin margen (corte instantáneo, como
+                    # antes).
+                    data["solar_sobre_umbral_desde"] = 0.0
+                    inicio_bajo = data.get("solar_bajo_umbral_desde", 0.0)
+                    if not inicio_bajo:
+                        data["solar_bajo_umbral_desde"] = ahora
+                    elif val_margen_solar <= 0 or (ahora - inicio_bajo) >= val_margen_solar * 60.0:
+                        data["solar_bajo_umbral_desde"] = 0.0
+                        await hass.services.async_call("homeassistant", "turn_off", {"entity_id": conf_enchufe})
+                        return
+                else:
+                    data["solar_bajo_umbral_desde"] = 0.0
 
                 tiempo_encendido = ahora - data.get("timestamp_encendido", ahora)
 
@@ -371,10 +400,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         await guardar_estado()
                     return
 
-                if is_solar and val_solar >= val_umbral:
-                    await hass.services.async_call("homeassistant", "turn_on", {"entity_id": conf_enchufe})
-                    return
-                
+                if is_solar:
+                    if val_solar >= val_umbral:
+                        # Mismo margen de estabilidad que al apagar: exige
+                        # producción por encima del umbral de forma continua
+                        # durante X minutos antes de encender, para no arrancar
+                        # y parar la carga con cada claro entre nubes.
+                        data["solar_bajo_umbral_desde"] = 0.0
+                        inicio_sobre = data.get("solar_sobre_umbral_desde", 0.0)
+                        if not inicio_sobre:
+                            data["solar_sobre_umbral_desde"] = ahora
+                        elif val_margen_solar <= 0 or (ahora - inicio_sobre) >= val_margen_solar * 60.0:
+                            data["solar_sobre_umbral_desde"] = 0.0
+                            await hass.services.async_call("homeassistant", "turn_on", {"entity_id": conf_enchufe})
+                            return
+                    else:
+                        data["solar_sobre_umbral_desde"] = 0.0
+
                 if is_programado:
                     if st_time and st_time.state not in ["unknown", "unavailable"]:
                         ahora_local_str = dt_util.now().strftime("%H:%M")
@@ -401,7 +443,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.async_on_unload(hass.bus.async_listen("virtual_ev_recalc", state_listener))
 
-    entidades_a_vigilar = [sw_solar, sw_red, sw_programado, time_inicio, conf_enchufe, conf_solar, num_umbral, num_duracion]
+    entidades_a_vigilar = [sw_solar, sw_red, sw_programado, time_inicio, conf_enchufe, conf_solar, num_umbral, num_duracion, num_margen_solar]
     entry.async_on_unload(async_track_state_change_event(hass, entidades_a_vigilar, state_listener))
 
     async def on_notification_action(event):
