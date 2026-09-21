@@ -13,7 +13,8 @@ Está diseñada especialmente para vehículos sin conectividad nativa (API), per
 * **Gestión de Excedentes Solares:** Arranca y pausa la carga automáticamente según la producción de tus placas solares y el umbral ajustable que elijas.
 * **Memoria inteligente contra nubes:** Si una nube apaga el cargador, el sistema retiene el objetivo original y reanuda el conteo exacto al volver el sol.
 * **Modo Forzar Red al 100% (BMS):** Carga continua sin importar el sol. Al llegar al 100%, detecta la caída de consumo del Sistema de Gestión de Batería (BMS) de tu vehículo y corta el enchufe por seguridad.
-* **Carga Programada con duración ajustable:** Define la hora de inicio y cuántas horas quieres que cargue (control **Duración Carga Programada**, en horas). Pasado ese tiempo desde el encendido, el enchufe se apaga solo, sin depender del consumo.
+* **Carga Programada con duración ajustable:** Define la hora de inicio y cuántas horas quieres que cargue (control **Duración Carga Programada**, en horas). El corte al 80% (por kWh reales) también aplica a este modo, y la duración actúa como límite máximo de seguridad si no llega a alcanzarlo antes.
+* **Protección contra cargas innecesarias:** Si activas Carga Automática Solar o Carga Programada y la batería ya está por encima del 80%, la integración no enciende el enchufe y te avisa por notificación en vez de encender y apagar el relé sin necesidad.
 
 ---
 
