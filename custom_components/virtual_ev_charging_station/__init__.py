@@ -98,6 +98,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     time_inicio = get_real_id("time", "hora_inicio")
     num_umbral = get_real_id("number", "umbral_potencia_solar")
     num_porcentaje = get_real_id("number", "porcentaje_actual")
+    num_duracion = get_real_id("number", "duracion_programada")
     sens_restante = get_real_id("sensor", "energia_restante_80")
 
     def is_state_on(eid):
@@ -152,8 +153,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
             val_solar = get_float(conf_solar)
             val_umbral = get_float(num_umbral, 3000.0)
+            val_duracion = get_float(num_duracion, 4.0)
             val_energia = get_float(conf_energia)
             val_potencia = get_float(conf_potencia)
+            st_potencia = hass.states.get(conf_potencia)
+            potencia_valida = st_potencia is not None and st_potencia.state not in ("unknown", "unavailable", "")
             val_restante = get_float(sens_restante)
             st_time = hass.states.get(time_inicio)
             
@@ -259,8 +263,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     return
 
                 tiempo_encendido = ahora - data.get("timestamp_encendido", ahora)
+
+                # DURACIÓN DE CARGA PROGRAMADA: corte por tiempo, independiente del
+                # consumo. Solo aplica en modo programado "puro" (sin red ni solar
+                # activos a la vez), para no pelearse con sus propias reglas de
+                # encendido/apagado. 0 horas = sin límite de duración.
+                if is_programado and not is_red and not is_solar and val_duracion > 0 and tiempo_encendido >= val_duracion * 3600.0:
+                    await guardar_estado()
+                    await hass.services.async_call("homeassistant", "turn_off", {"entity_id": conf_enchufe})
+                    await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_programado})
+                    await enviar_msg(
+                        "⏰ Carga programada finalizada",
+                        f"Se han completado las {val_duracion:g} horas programadas. Enchufe desconectado automáticamente."
+                    )
+                    return
+
                 if (is_red or is_solar or is_programado) and tiempo_encendido > 60.0:
-                    if 0 < val_potencia < BMS_POTENCIA_MINIMA:
+                    # potencia_valida evita confundir un sensor caído (unknown/
+                    # unavailable, que get_float también reduce a 0.0) con un
+                    # consumo real de 0W (p.ej. la moto no está enchufada).
+                    if potencia_valida and val_potencia < BMS_POTENCIA_MINIMA:
                         bms_low_since = data.get("bms_low_since", 0.0)
                         if not bms_low_since:
                             data["bms_low_since"] = ahora
@@ -272,7 +294,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_red})
                             await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_solar})
                             await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_programado})
-                            await enviar_msg("🏁 ¡Batería cargada al 100%!", "El cargador ha terminado de equilibrar las celdas y el consumo ha caído. Corriente cortada por seguridad. ¡Batería llena y lista para la ruta! 🚀")
+                            await enviar_msg("🏁 Sin consumo detectado", "No se ha detectado consumo real durante 5 minutos (batería llena, moto desconectada o carga finalizada). Corriente cortada por seguridad. 🔌")
                             return
                     else:
                         data["bms_low_since"] = 0.0
@@ -314,7 +336,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     entry.async_on_unload(hass.bus.async_listen("virtual_ev_recalc", state_listener))
     
-    entidades_a_vigilar = [sw_solar, sw_red, sw_programado, time_inicio, conf_enchufe, conf_solar, num_umbral]
+    entidades_a_vigilar = [sw_solar, sw_red, sw_programado, time_inicio, conf_enchufe, conf_solar, num_umbral, num_duracion]
     entry.async_on_unload(async_track_state_change_event(hass, entidades_a_vigilar, state_listener))
 
     async def timer_callback(now):
