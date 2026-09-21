@@ -154,6 +154,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             val_umbral = get_float(num_umbral, 3000.0)
             val_energia = get_float(conf_energia)
             val_potencia = get_float(conf_potencia)
+            st_potencia = hass.states.get(conf_potencia)
+            potencia_valida = st_potencia is not None and st_potencia.state not in ("unknown", "unavailable", "")
             val_restante = get_float(sens_restante)
             st_time = hass.states.get(time_inicio)
             
@@ -260,7 +262,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
                 tiempo_encendido = ahora - data.get("timestamp_encendido", ahora)
                 if (is_red or is_solar or is_programado) and tiempo_encendido > 60.0:
-                    if 0 < val_potencia < BMS_POTENCIA_MINIMA:
+                    # potencia_valida evita confundir un sensor caído (unknown/
+                    # unavailable, que get_float también reduce a 0.0) con un
+                    # consumo real de 0W (p.ej. la moto no está enchufada).
+                    if potencia_valida and val_potencia < BMS_POTENCIA_MINIMA:
                         bms_low_since = data.get("bms_low_since", 0.0)
                         if not bms_low_since:
                             data["bms_low_since"] = ahora
@@ -272,7 +277,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_red})
                             await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_solar})
                             await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_programado})
-                            await enviar_msg("🏁 ¡Batería cargada al 100%!", "El cargador ha terminado de equilibrar las celdas y el consumo ha caído. Corriente cortada por seguridad. ¡Batería llena y lista para la ruta! 🚀")
+                            await enviar_msg("🏁 Sin consumo detectado", "No se ha detectado consumo real durante 5 minutos (batería llena, moto desconectada o carga finalizada). Corriente cortada por seguridad. 🔌")
                             return
                     else:
                         data["bms_low_since"] = 0.0
