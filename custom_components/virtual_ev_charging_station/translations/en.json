@@ -25,6 +25,15 @@
           "servicio_notificacion": "The name of the alert service you use (e.g., notify.telegram_kiko). Leave it completely blank if you prefer the system to run silently."
         }
       }
+    },
+    "error": {
+      "missing_entities": "You must select all required entities (switch, energy, power and solar sensor).",
+      "value_error": "The value entered must be greater than zero.",
+      "invalid_number": "Enter a valid number (use dot or comma as decimal separator).",
+      "unknown": "An unexpected error occurred. Check the logs for details."
+    },
+    "abort": {
+      "already_configured": "That switch is already linked to a virtual charging station."
     }
   }
 }

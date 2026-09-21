@@ -2,7 +2,10 @@ import voluptuous as vol
 import logging
 from homeassistant import config_entries
 from homeassistant.helpers import selector
-from .const import *
+from .const import (
+    DOMAIN, CONF_ENCHUFE, CONF_ENERGIA, CONF_POTENCIA, CONF_SOLAR,
+    CONF_CAPACIDAD, CONF_POTENCIA_CARGA, CONF_UMBRAL_SOLAR, CONF_NOTIFICACION
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,6 +47,8 @@ class VirtualEVChargingStationConfigFlow(config_entries.ConfigFlow, domain=DOMAI
                     _LOGGER.error(f"[{DOMAIN}] Error al parsear números: {e}")
                 
                 if not errors:
+                    await self.async_set_unique_id(enchufe)
+                    self._abort_if_unique_id_configured()
                     _LOGGER.info(f"[{DOMAIN}] Configuración válida. Creando entrada...")
                     return self.async_create_entry(title="Virtual EV Station", data=user_input)
             

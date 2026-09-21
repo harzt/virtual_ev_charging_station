@@ -25,6 +25,15 @@
           "servicio_notificacion": "Ejemplo: notify.telegram_juan"
         }
       }
+    },
+    "error": {
+      "missing_entities": "Debes seleccionar todas las entidades obligatorias (interruptor, energía, potencia y sensor solar).",
+      "value_error": "El valor introducido debe ser mayor que cero.",
+      "invalid_number": "Introduce un número válido (usa punto o coma como separador decimal).",
+      "unknown": "Ha ocurrido un error inesperado. Revisa el registro para más detalles."
+    },
+    "abort": {
+      "already_configured": "Ese interruptor ya está vinculado a una estación de carga virtual."
     }
   }
 }
