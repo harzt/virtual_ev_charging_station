@@ -3,7 +3,7 @@ from datetime import timedelta
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.core import callback
-from .const import DOMAIN, CONF_CAPACIDAD
+from .const import DOMAIN, CONF_CAPACIDAD, EFICIENCIA_CARGA
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -88,8 +88,11 @@ class EVSensor(SensorEntity):
             else:
                 _LOGGER.debug(f"[{DOMAIN}] Estado de potencia no disponible")
 
-            # Calcular energía faltante para llegar al 80%
-            energia_faltante = max(0.0, (80.0 - pct_bateria) * self._capacidad / 100.0)
+            # Calcular energía faltante para llegar al 80%, aplicando el
+            # rendimiento del cargador: hace falta más energía de red de la
+            # que realmente entra en la batería.
+            energia_bateria_faltante = max(0.0, (80.0 - pct_bateria) * self._capacidad / 100.0)
+            energia_faltante = energia_bateria_faltante / EFICIENCIA_CARGA
             
             if self._id_name == "energia_restante_80":
                 self._attr_native_value = round(energia_faltante, 2)

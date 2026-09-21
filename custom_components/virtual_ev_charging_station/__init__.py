@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import timedelta
 import homeassistant.util.dt as dt_util
@@ -7,14 +8,10 @@ from homeassistant.helpers.event import async_track_time_interval, async_track_s
 from homeassistant.helpers.storage import STORAGE_DIR
 import homeassistant.helpers.entity_registry as er
 from .const import (
-    DOMAIN, PLATFORMS, CONF_ENCHUFE, CONF_ENERGIA, 
-    CONF_POTENCIA, CONF_SOLAR, CONF_NOTIFICACION
+    DOMAIN, PLATFORMS, CONF_ENCHUFE, CONF_ENERGIA,
+    CONF_POTENCIA, CONF_SOLAR, CONF_NOTIFICACION, CONF_CAPACIDAD,
+    EFICIENCIA_CARGA, BMS_POTENCIA_MINIMA, BMS_TIEMPO_CONFIRMACION
 )
-
-try:
-    from .const import CONF_CAPACIDAD
-except ImportError:
-    CONF_CAPACIDAD = "capacidad_bateria"
 
 import json
 import os
@@ -23,44 +20,49 @@ _LOGGER = logging.getLogger(__name__)
 
 STORAGE_FILE = "virtual_ev_charging_station_state.json"
 
+
+def _read_storage(storage_path):
+    try:
+        if os.path.exists(storage_path):
+            with open(storage_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        _LOGGER.debug(f"[{DOMAIN}] No se pudo leer el almacenamiento: {e}")
+    return {}
+
+
+def _write_storage(storage_path, all_data):
+    try:
+        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+        with open(storage_path, 'w', encoding='utf-8') as f:
+            json.dump(all_data, f, indent=2)
+    except Exception as e:
+        _LOGGER.debug(f"[{DOMAIN}] No se pudo escribir el almacenamiento: {e}")
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    _LOGGER.info(f"[{DOMAIN}] Inicializando integración v1.3.3 - Reloj Nativo HA")
-    
+    _LOGGER.info(f"[{DOMAIN}] Inicializando integración v1.4.0 - Reconfiguración y sensor de energía robustos")
+
     hass.data.setdefault(DOMAIN, {})
-    
+
     data = {
         "energia_corte": 0.0,
         "enchufe_estaba_on": False,
         "notificado_80": False,
-        "bms_ticks": 0,
+        "bms_low_since": 0.0,
         "timestamp_encendido": 0.0,
-        "energia_anterior": 0.0,
+        "energia_anterior": None,
+        "energia_entidad_ref": None,
         "porcentaje_preciso": 0.0
     }
-    
+
     storage_path = hass.config.path(STORAGE_DIR, STORAGE_FILE)
+    entry_lock = asyncio.Lock()
 
-    def _read_storage():
-        try:
-            if os.path.exists(storage_path):
-                with open(storage_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-        except Exception:
-            pass
-        return {}
-
-    def _write_storage(all_data):
-        try:
-            os.makedirs(os.path.dirname(storage_path), exist_ok=True)
-            with open(storage_path, 'w', encoding='utf-8') as f:
-                json.dump(all_data, f, indent=2)
-        except Exception:
-            pass
-
-    stored_data = await hass.async_add_executor_job(_read_storage)
+    stored_data = await hass.async_add_executor_job(_read_storage, storage_path)
     if entry.entry_id in stored_data:
         data.update(stored_data[entry.entry_id])
-    
+
     hass.data[DOMAIN][entry.entry_id] = data
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -70,6 +72,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     conf_solar = entry.data.get(CONF_SOLAR)
 
     if not conf_enchufe: return False
+
+    # Si se ha reconfigurado la integración con otro sensor de energía,
+    # descartamos la referencia anterior: comparar el acumulado del sensor
+    # nuevo contra el del antiguo generaría un salto de energía sin sentido
+    # (por ejemplo, saltar al 100% de golpe al enchufar por primera vez).
+    if data.get("energia_entidad_ref") != conf_energia:
+        _LOGGER.info(
+            f"[{DOMAIN}] Sensor de energía nuevo o distinto al guardado "
+            f"({data.get('energia_entidad_ref')} -> {conf_energia}); "
+            "se reinicia la referencia de energía."
+        )
+        data["energia_anterior"] = None
+        data["energia_entidad_ref"] = conf_energia
 
     ent_reg = er.async_get(hass)
     
@@ -108,11 +123,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def guardar_estado():
         try:
-            all_data = await hass.async_add_executor_job(_read_storage)
+            all_data = await hass.async_add_executor_job(_read_storage, storage_path)
             all_data[entry.entry_id] = data
-            await hass.async_add_executor_job(_write_storage, all_data)
-        except Exception:
-            pass
+            await hass.async_add_executor_job(_write_storage, storage_path, all_data)
+        except Exception as e:
+            _LOGGER.debug(f"[{DOMAIN}] No se pudo guardar el estado: {e}")
 
     async def enviar_msg(titulo, mensaje):
         srv = entry.data.get(CONF_NOTIFICACION, "")
@@ -121,10 +136,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             parts = srv.strip().split(".")
             if len(parts) != 2: return
             await hass.services.async_call(parts[0], parts[1], {"title": titulo, "message": mensaje})
-        except Exception:
-            pass
+        except Exception as e:
+            _LOGGER.debug(f"[{DOMAIN}] No se pudo enviar la notificación: {e}")
 
     async def evaluar_logica(_=None):
+        async with entry_lock:
+            await _evaluar_logica_impl()
+
+    async def _evaluar_logica_impl():
         try:
             is_on = is_state_on(conf_enchufe)
             is_red = is_state_on(sw_red)
@@ -150,28 +169,52 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
 
             # TRACKING DE BATERÍA EN TIEMPO REAL
-            energia_anterior = data.get("energia_anterior", val_energia)
+            st_energia = hass.states.get(conf_energia)
+            energia_valida = st_energia is not None and st_energia.state not in ("unknown", "unavailable", "")
+
+            energia_anterior = data.get("energia_anterior")
             porcentaje_actual = get_float(num_porcentaje)
             porcentaje_interno = data.get("porcentaje_preciso", porcentaje_actual)
 
             if abs(porcentaje_actual - round(porcentaje_interno, 1)) > 0.5:
                 porcentaje_interno = porcentaje_actual
 
-            if is_on and val_energia > energia_anterior:
-                delta_kwh = val_energia - energia_anterior
-                cap_bateria = float(entry.data.get(CONF_CAPACIDAD, 14.4))
-                
-                porcentaje_interno += (delta_kwh / cap_bateria) * 100.0
-                porcentaje_interno = min(100.0, porcentaje_interno)
-                
-                nuevo_porc = round(porcentaje_interno, 1)
-                if nuevo_porc > porcentaje_actual:
-                    await hass.services.async_call("number", "set_value", {
-                        "entity_id": num_porcentaje, 
-                        "value": nuevo_porc
-                    })
+            if energia_valida:
+                if energia_anterior is None:
+                    # Primera lectura válida (integración nueva o recién
+                    # reconfigurada con otro sensor): fijamos la referencia
+                    # sin aplicar ningún delta, para no interpretar el
+                    # acumulado histórico del sensor como energía cargada
+                    # de golpe.
+                    _LOGGER.debug(f"[{DOMAIN}] Referencia de energía inicializada a {val_energia} kWh")
+                elif is_on and val_energia > energia_anterior:
+                    delta_kwh = val_energia - energia_anterior
+                    cap_bateria = float(entry.data.get(CONF_CAPACIDAD, 14.4))
 
-            data["energia_anterior"] = val_energia
+                    if delta_kwh > cap_bateria:
+                        # Salto mayor que la capacidad total de la batería en
+                        # un solo ciclo: no es un consumo real, sino un
+                        # sensor sustituido o un contador reiniciado.
+                        # Ignoramos el delta y resincronizamos la referencia.
+                        _LOGGER.warning(
+                            f"[{DOMAIN}] Salto de energía implausible (+{delta_kwh:.2f} kWh en un ciclo); "
+                            "se ignora y se resincroniza la referencia (¿sensor cambiado o reiniciado?)"
+                        )
+                    else:
+                        # Solo un 88% de lo consumido de la red llega realmente a la
+                        # batería (pérdidas térmicas del cargador).
+                        porcentaje_interno += (delta_kwh * EFICIENCIA_CARGA / cap_bateria) * 100.0
+                        porcentaje_interno = min(100.0, porcentaje_interno)
+
+                        nuevo_porc = round(porcentaje_interno, 1)
+                        if nuevo_porc > porcentaje_actual:
+                            await hass.services.async_call("number", "set_value", {
+                                "entity_id": num_porcentaje,
+                                "value": nuevo_porc
+                            })
+
+                data["energia_anterior"] = val_energia
+
             data["porcentaje_preciso"] = porcentaje_interno
 
             enchufe_estaba_on = data.get("enchufe_estaba_on", False)
@@ -180,7 +223,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 data["enchufe_estaba_on"] = True
                 data["energia_corte"] = val_energia + val_restante
                 data["notificado_80"] = False
-                data["bms_ticks"] = 0
+                data["bms_low_since"] = 0.0
                 data["timestamp_encendido"] = ahora
                 
                 if is_red:
@@ -193,7 +236,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             elif not is_on and enchufe_estaba_on:
                 data["enchufe_estaba_on"] = False
                 data["energia_corte"] = 0.0
-                data["bms_ticks"] = 0
+                data["bms_low_since"] = 0.0
                 data["timestamp_encendido"] = 0.0
 
             # REGLAS DE APAGADO
@@ -217,12 +260,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
                 tiempo_encendido = ahora - data.get("timestamp_encendido", ahora)
                 if (is_red or is_solar or is_programado) and tiempo_encendido > 60.0:
-                    if 0 < val_potencia < 15:
-                        data["bms_ticks"] += 1
-                        if data["bms_ticks"] >= 3:
-                            data["bms_ticks"] = 0
+                    if 0 < val_potencia < BMS_POTENCIA_MINIMA:
+                        bms_low_since = data.get("bms_low_since", 0.0)
+                        if not bms_low_since:
+                            data["bms_low_since"] = ahora
+                        elif ahora - bms_low_since >= BMS_TIEMPO_CONFIRMACION:
+                            data["bms_low_since"] = 0.0
                             await guardar_estado()
-                            
+
                             await hass.services.async_call("homeassistant", "turn_off", {"entity_id": conf_enchufe})
                             await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_red})
                             await hass.services.async_call("homeassistant", "turn_off", {"entity_id": sw_solar})
@@ -230,9 +275,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             await enviar_msg("🏁 ¡Batería cargada al 100%!", "El cargador ha terminado de equilibrar las celdas y el consumo ha caído. Corriente cortada por seguridad. ¡Batería llena y lista para la ruta! 🚀")
                             return
                     else:
-                        data["bms_ticks"] = 0
+                        data["bms_low_since"] = 0.0
                 else:
-                    data["bms_ticks"] = 0
+                    data["bms_low_since"] = 0.0
 
             # REGLAS DE ENCENDIDO
             if not is_on:
@@ -285,4 +330,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if unload_ok: hass.data[DOMAIN].pop(entry.entry_id, None)
         return unload_ok
     except Exception:
-        return False 
+        return False
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Limpia el estado persistido cuando se elimina definitivamente la entrada."""
+    storage_path = hass.config.path(STORAGE_DIR, STORAGE_FILE)
+    all_data = await hass.async_add_executor_job(_read_storage, storage_path)
+    if entry.entry_id in all_data:
+        all_data.pop(entry.entry_id, None)
+        await hass.async_add_executor_job(_write_storage, storage_path, all_data) 
