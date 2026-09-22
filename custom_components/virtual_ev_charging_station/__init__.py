@@ -10,7 +10,8 @@ import homeassistant.helpers.entity_registry as er
 from .const import (
     DOMAIN, PLATFORMS, CONF_ENCHUFE, CONF_ENERGIA,
     CONF_POTENCIA, CONF_SOLAR, CONF_NOTIFICACION, CONF_CAPACIDAD,
-    EFICIENCIA_CARGA, BMS_POTENCIA_MINIMA, BMS_TIEMPO_CONFIRMACION
+    EFICIENCIA_CARGA, BMS_POTENCIA_MINIMA, BMS_TIEMPO_CONFIRMACION,
+    POTENCIA_MAXIMA_KW, DELTA_ENERGIA_MINIMO
 )
 
 import json
@@ -46,13 +47,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     data = {
-        "energia_corte": 0.0,
+        "energia_sesion": 0.0,
+        "energia_objetivo": 0.0,
         "enchufe_estaba_on": False,
         "notificado_80": False,
         "notificado_ya_cargada": False,
         "bms_low_since": 0.0,
         "timestamp_encendido": 0.0,
         "energia_anterior": None,
+        "energia_timestamp": 0.0,
         "energia_entidad_ref": None,
         "porcentaje_preciso": 0.0,
         "solar_sobre_umbral_desde": 0.0,
@@ -87,6 +90,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "se reinicia la referencia de energía."
         )
         data["energia_anterior"] = None
+        data["energia_timestamp"] = 0.0
+        data["energia_sesion"] = 0.0
         data["energia_entidad_ref"] = conf_energia
 
     ent_reg = er.async_get(hass)
@@ -217,27 +222,45 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 porcentaje_interno = porcentaje_actual
 
             if energia_valida:
-                if energia_anterior is None:
+                if energia_anterior is None or val_energia < energia_anterior:
                     # Primera lectura válida (integración nueva o recién
-                    # reconfigurada con otro sensor): fijamos la referencia
-                    # sin aplicar ningún delta, para no interpretar el
-                    # acumulado histórico del sensor como energía cargada
-                    # de golpe.
-                    _LOGGER.debug(f"[{DOMAIN}] Referencia de energía inicializada a {val_energia} kWh")
-                elif is_on and val_energia > energia_anterior:
+                    # reconfigurada con otro sensor), o contador reiniciado:
+                    # muchos enchufes resetean su acumulado al conmutar el relé.
+                    # En ambos casos fijamos la referencia sin aplicar ningún
+                    # delta, para no interpretar el acumulado histórico del
+                    # sensor como energía cargada de golpe.
+                    if energia_anterior is not None:
+                        _LOGGER.info(
+                            f"[{DOMAIN}] El contador de energía se ha reiniciado "
+                            f"({energia_anterior} -> {val_energia} kWh); se resincroniza la referencia."
+                        )
+                    else:
+                        _LOGGER.debug(f"[{DOMAIN}] Referencia de energía inicializada a {val_energia} kWh")
+                elif is_on:
                     delta_kwh = val_energia - energia_anterior
                     cap_bateria = float(entry.data.get(CONF_CAPACIDAD, 14.4))
 
-                    if delta_kwh > cap_bateria:
-                        # Salto mayor que la capacidad total de la batería en
-                        # un solo ciclo: no es un consumo real, sino un
-                        # sensor sustituido o un contador reiniciado.
-                        # Ignoramos el delta y resincronizamos la referencia.
+                    # Cota física: con la potencia máxima admitida, esto es todo
+                    # lo que puede haber entrado desde la lectura anterior. Filtra
+                    # los valores basura que algunos enchufes publican durante la
+                    # conmutación del relé, que por ser menores que la capacidad
+                    # de la batería pasarían desapercibidos.
+                    horas = max(0.0, ahora - data.get("energia_timestamp", 0.0)) / 3600.0
+                    delta_max = max(DELTA_ENERGIA_MINIMO, POTENCIA_MAXIMA_KW * horas * 1.5)
+
+                    if delta_kwh > delta_max:
                         _LOGGER.warning(
-                            f"[{DOMAIN}] Salto de energía implausible (+{delta_kwh:.2f} kWh en un ciclo); "
-                            "se ignora y se resincroniza la referencia (¿sensor cambiado o reiniciado?)"
+                            f"[{DOMAIN}] Salto de energía implausible (+{delta_kwh:.2f} kWh en {horas * 3600.0:.0f}s, "
+                            f"máximo plausible {delta_max:.2f} kWh); se ignora y se resincroniza la referencia."
                         )
                     else:
+                        # Energía real acumulada en esta sesión de carga. Se mide
+                        # sumando deltas en vez de comparando el valor absoluto
+                        # del contador contra una referencia tomada al encender:
+                        # esa referencia se vuelve inservible en cuanto el
+                        # contador se reinicia a mitad de carga.
+                        data["energia_sesion"] = data.get("energia_sesion", 0.0) + delta_kwh
+
                         # Solo un 88% de lo consumido de la red llega realmente a la
                         # batería (pérdidas térmicas del cargador).
                         porcentaje_interno += (delta_kwh * EFICIENCIA_CARGA / cap_bateria) * 100.0
@@ -251,6 +274,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             })
 
                 data["energia_anterior"] = val_energia
+                data["energia_timestamp"] = ahora
 
             data["porcentaje_preciso"] = porcentaje_interno
 
@@ -258,7 +282,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             
             if is_on and not enchufe_estaba_on:
                 data["enchufe_estaba_on"] = True
-                data["energia_corte"] = val_energia + val_restante
+                # El objetivo se guarda como energía a cargar en esta sesión, no
+                # como una lectura absoluta del contador: así sigue siendo válido
+                # aunque el contador se reinicie durante la carga.
+                data["energia_sesion"] = 0.0
+                data["energia_objetivo"] = val_restante
                 data["notificado_80"] = False
                 data["bms_low_since"] = 0.0
                 data["timestamp_encendido"] = ahora
@@ -276,7 +304,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
             elif not is_on and enchufe_estaba_on:
                 data["enchufe_estaba_on"] = False
-                data["energia_corte"] = 0.0
+                data["energia_objetivo"] = 0.0
+                data["energia_sesion"] = 0.0
                 data["bms_low_since"] = 0.0
                 data["timestamp_encendido"] = 0.0
 
@@ -290,7 +319,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 # programado (ambos son cargas "de cortesía" que deben
                 # respetar el límite saludable; solo Forzar Red se salta el
                 # 80% a propósito, para llegar al 100%).
-                if (is_solar or is_programado) and not is_red and data["energia_corte"] > 0 and val_energia >= data["energia_corte"]:
+                if (is_solar or is_programado) and not is_red and data.get("energia_objetivo", 0.0) > 0 and data.get("energia_sesion", 0.0) >= data["energia_objetivo"]:
                     if not data["notificado_80"]:
                         data["notificado_80"] = True
                         await hass.services.async_call("homeassistant", "turn_off", {"entity_id": conf_enchufe})

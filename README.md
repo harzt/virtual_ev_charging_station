@@ -25,7 +25,7 @@ Está diseñada especialmente para vehículos sin conectividad nativa (API), per
 La integración opera de forma completamente autónoma en el núcleo de Home Assistant bajo la siguiente lógica:
 
 1. **Planificación:** Al ajustar el **Porcentaje Actual** de tu vehículo y la **Potencia de Carga**, el sistema calcula instantáneamente cuántos kWh netos faltan para el objetivo aplicando un factor de eficiencia del **88%** (pérdidas térmicas del cargador).
-2. **Activación de Carga:** En cuanto el enchufe se enciende (vía Sol o vía Red), la integración lee el valor absoluto actual de tu contador de energía y fija de forma persistente la **Energía de Corte**.
+2. **Activación de Carga:** En cuanto el enchufe se enciende (vía Sol o vía Red), la integración fija los kWh que faltan como **objetivo de la sesión** y va acumulando la energía realmente inyectada sumando los incrementos de tu contador. Al medir por incrementos en lugar de por valor absoluto, el corte sigue siendo exacto aunque el contador del enchufe se reinicie a mitad de carga (algo habitual en enchufes que resetean su acumulado al conmutar el relé).
 3. **Control Solar:** Monitorea tu producción fotovoltaica. Si supera el umbral configurado por el usuario, el enchufe se activa. Si cae, se apaga (salvo que la carga por red esté activa).
 4. **Protección BMS:** Si estás cargando en modo Red hacia el 100%, un temporizador interno vigila la potencia. Si el consumo cae por debajo de **15W durante 5 minutos seguidos**, el enchufe se apaga asumiendo carga completa o desconexión física.
 
