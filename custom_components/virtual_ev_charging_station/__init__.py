@@ -10,7 +10,7 @@ import homeassistant.helpers.entity_registry as er
 from .const import (
     DOMAIN, PLATFORMS, CONF_ENCHUFE, CONF_ENERGIA,
     CONF_POTENCIA, CONF_SOLAR, CONF_NOTIFICACION, CONF_CAPACIDAD,
-    EFICIENCIA_CARGA, BMS_POTENCIA_MINIMA, BMS_TIEMPO_CONFIRMACION,
+    eficiencia, BMS_POTENCIA_MINIMA, BMS_TIEMPO_CONFIRMACION,
     POTENCIA_MAXIMA_KW, DELTA_ENERGIA_MINIMO
 )
 
@@ -261,9 +261,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         # contador se reinicia a mitad de carga.
                         data["energia_sesion"] = data.get("energia_sesion", 0.0) + delta_kwh
 
-                        # Solo un 88% de lo consumido de la red llega realmente a la
-                        # batería (pérdidas térmicas del cargador).
-                        porcentaje_interno += (delta_kwh * EFICIENCIA_CARGA / cap_bateria) * 100.0
+                        # Solo una parte de lo consumido de la red llega realmente a
+                        # la batería (pérdidas térmicas del cargador).
+                        porcentaje_interno += (delta_kwh * eficiencia(entry) / cap_bateria) * 100.0
                         porcentaje_interno = min(100.0, porcentaje_interno)
 
                         nuevo_porc = round(porcentaje_interno, 1)
@@ -273,8 +273,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                                 "value": nuevo_porc
                             })
 
-                data["energia_anterior"] = val_energia
-                data["energia_timestamp"] = ahora
+                # La referencia solo se mueve cuando el contador publica un valor
+                # nuevo. Si se sellara la hora en cada evaluación, un contador que
+                # publica cada minuto mediría su incremento contra la ventana de
+                # unos segundos que separa dos evaluaciones, y la cota de plausibilidad
+                # descartaría energía real.
+                if val_energia != energia_anterior:
+                    data["energia_anterior"] = val_energia
+                    data["energia_timestamp"] = ahora
 
             data["porcentaje_preciso"] = porcentaje_interno
 
