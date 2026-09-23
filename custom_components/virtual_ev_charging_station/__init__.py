@@ -273,8 +273,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                                 "value": nuevo_porc
                             })
 
-                data["energia_anterior"] = val_energia
-                data["energia_timestamp"] = ahora
+                # La referencia solo se mueve cuando el contador publica un valor
+                # nuevo. Si se sellara la hora en cada evaluación, un contador que
+                # publica cada minuto mediría su incremento contra la ventana de
+                # unos segundos que separa dos evaluaciones, y la cota de plausibilidad
+                # descartaría energía real.
+                if val_energia != energia_anterior:
+                    data["energia_anterior"] = val_energia
+                    data["energia_timestamp"] = ahora
 
             data["porcentaje_preciso"] = porcentaje_interno
 
