@@ -4,7 +4,8 @@ from homeassistant import config_entries
 from homeassistant.helpers import selector
 from .const import (
     DOMAIN, CONF_ENCHUFE, CONF_ENERGIA, CONF_POTENCIA, CONF_SOLAR,
-    CONF_CAPACIDAD, CONF_POTENCIA_CARGA, CONF_UMBRAL_SOLAR, CONF_NOTIFICACION
+    CONF_CAPACIDAD, CONF_EFICIENCIA, CONF_POTENCIA_CARGA, CONF_UMBRAL_SOLAR,
+    CONF_NOTIFICACION, EFICIENCIA_CARGA_DEFECTO
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,9 +32,12 @@ class VirtualEVChargingStationConfigFlow(config_entries.ConfigFlow, domain=DOMAI
                 cap = float(str(user_input.get(CONF_CAPACIDAD, 13.0)).replace(',', '.'))
                 pot = float(str(user_input.get(CONF_POTENCIA_CARGA, 1.5)).replace(',', '.'))
                 umbral = float(str(user_input.get(CONF_UMBRAL_SOLAR, 3000.0)).replace(',', '.'))
+                efic = float(str(user_input.get(CONF_EFICIENCIA, EFICIENCIA_CARGA_DEFECTO)).replace(',', '.'))
 
                 if cap <= 0:
                     errors[CONF_CAPACIDAD] = "value_error"
+                if not 0 < efic <= 100:
+                    errors[CONF_EFICIENCIA] = "value_error"
                 if pot <= 0:
                     errors[CONF_POTENCIA_CARGA] = "value_error"
                 if umbral < 0:
@@ -95,6 +99,13 @@ class VirtualEVChargingStationConfigFlow(config_entries.ConfigFlow, domain=DOMAI
             _req_num(CONF_CAPACIDAD, 14.4): vol.All(
                 vol.Coerce(float),
                 vol.Range(max=1000)
+            ),
+            # Rendimiento del cargador, en %. Absorbe además la falta de linealidad
+            # entre los kWh medidos y el porcentaje que muestra el BMS, así que se
+            # calibra comparando la lectura real del vehículo tras una carga.
+            _req_num(CONF_EFICIENCIA, EFICIENCIA_CARGA_DEFECTO): vol.All(
+                vol.Coerce(float),
+                vol.Range(max=100)
             ),
             _req_num(CONF_POTENCIA_CARGA, 1.4): vol.All(
                 vol.Coerce(float),

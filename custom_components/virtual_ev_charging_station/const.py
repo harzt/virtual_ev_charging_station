@@ -7,13 +7,28 @@ CONF_ENERGIA = "enchufe_energia"
 CONF_POTENCIA = "enchufe_potencia"
 CONF_SOLAR = "sensor_solar"
 CONF_CAPACIDAD = "capacidad_bateria"
+CONF_EFICIENCIA = "eficiencia_carga"
 CONF_POTENCIA_CARGA = "potencia_carga"
 CONF_UMBRAL_SOLAR = "umbral_solar"
 CONF_NOTIFICACION = "servicio_notificacion"
 
-# Rendimiento estimado del cargador (pérdidas térmicas): 88% de lo consumido
-# de la red llega realmente a la batería.
-EFICIENCIA_CARGA = 0.88
+# Rendimiento del cargador (pérdidas térmicas): porcentaje de lo consumido de la
+# red que llega realmente a la batería. Es solo el valor por defecto: cada
+# instalación lo ajusta en la configuración, porque depende del cargador y
+# porque absorbe también la falta de linealidad entre los kWh reales y el
+# porcentaje que muestra el BMS del vehículo.
+EFICIENCIA_CARGA_DEFECTO = 88.0
+
+
+def eficiencia(entry):
+    """Rendimiento configurado, como fracción (0-1)."""
+    try:
+        valor = float(str(entry.data.get(CONF_EFICIENCIA, EFICIENCIA_CARGA_DEFECTO)).replace(',', '.'))
+    except (ValueError, TypeError):
+        valor = EFICIENCIA_CARGA_DEFECTO
+    if not 0 < valor <= 100:
+        valor = EFICIENCIA_CARGA_DEFECTO
+    return valor / 100.0
 
 # Umbral y tiempo de espera para la detección de fin de carga por el BMS
 BMS_POTENCIA_MINIMA = 15.0

@@ -24,7 +24,9 @@ Está diseñada especialmente para vehículos sin conectividad nativa (API), per
 
 La integración opera de forma completamente autónoma en el núcleo de Home Assistant bajo la siguiente lógica:
 
-1. **Planificación:** Al ajustar el **Porcentaje Actual** de tu vehículo y la **Potencia de Carga**, el sistema calcula instantáneamente cuántos kWh netos faltan para el objetivo aplicando un factor de eficiencia del **88%** (pérdidas térmicas del cargador).
+1. **Planificación:** Al ajustar el **Porcentaje Actual** de tu vehículo y la **Potencia de Carga**, el sistema calcula instantáneamente cuántos kWh netos faltan para el objetivo aplicando el **Rendimiento del Cargador** que hayas configurado (88% por defecto: las pérdidas térmicas hacen que no toda la energía de red llegue a la batería).
+
+    > 💡 **Cómo calibrarlo:** tras una carga completa, compara el porcentaje que marca tu vehículo con el que muestra la integración. Si el vehículo marca **más** de lo previsto, sube el rendimiento; si marca **menos**, bájalo. Este parámetro absorbe además la falta de linealidad entre los kWh reales y el porcentaje que muestra el BMS, así que no tiene por qué coincidir con la eficiencia de catálogo del cargador.
 2. **Activación de Carga:** En cuanto el enchufe se enciende (vía Sol o vía Red), la integración fija los kWh que faltan como **objetivo de la sesión** y va acumulando la energía realmente inyectada sumando los incrementos de tu contador. Al medir por incrementos en lugar de por valor absoluto, el corte sigue siendo exacto aunque el contador del enchufe se reinicie a mitad de carga (algo habitual en enchufes que resetean su acumulado al conmutar el relé).
 3. **Control Solar:** Monitorea tu producción fotovoltaica. Si supera el umbral configurado por el usuario, el enchufe se activa. Si cae, se apaga (salvo que la carga por red esté activa).
 4. **Protección BMS:** Si estás cargando en modo Red hacia el 100%, un temporizador interno vigila la potencia. Si el consumo cae por debajo de **15W durante 5 minutos seguidos**, el enchufe se apaga asumiendo carga completa o desconexión física.
@@ -51,7 +53,7 @@ type: custom:virtual-ev-charging-card
 ```
 ## 📝 Ejemplos Prácticos de Uso Diario
 
-> 💡 **Parámetros de partida para los ejemplos:** Vehículo con batería de **13 kWh** cargando en un enchufe inteligente limitado a **1.4 kW** (eficiencia estimada del 88%).
+> 💡 **Parámetros de partida para los ejemplos:** Vehículo con batería de **13 kWh** cargando en un enchufe inteligente limitado a **1.4 kW** (rendimiento configurado al 88%).
 
 ---
 
